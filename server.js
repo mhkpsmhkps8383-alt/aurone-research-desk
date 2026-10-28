@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { q, ensureSchema, seedIfEmpty } from './db.js';
 import { enrichDoi, searchPapers } from './scholar.js';
 import { toBibtex, toRis } from './cite.js';
+import { hitsIn } from './textsearch.js';
 
 const app = express();
 // فشرده‌سازی پاسخ‌ها: فهرست مقالات با چکیده‌ها صدها کیلوبایت می‌شود و روی
@@ -134,65 +135,15 @@ app.post('/api/papers/:id/text',
    هنگام استخراج، صفحه‌ها با \f از هم جدا شده‌اند، پس شمارهٔ صفحه دقیق است؛
    برای فایل‌های قدیمی‌تر که این مرز را ندارند، از روی جای عبارت تخمین می‌زنیم. */
 
-const squash = (s) => s.toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '');
-
-function squashMap(s) {
-  let out = '';
-  const pos = [];
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i].toLowerCase();
-    if (/[a-z0-9؀-ۿ]/.test(ch)) { out += ch; pos.push(i); }
-  }
-  return { out, pos };
-}
-
-function pageAt(text, at, pages) {
-  let ff = 0;
-  for (let i = 0; i < at; i++) if (text.charCodeAt(i) === 12) ff++;
-  if (ff > 0) return { page: ff + 1, exact: true };
-  if (pages > 0 && text.length) {
-    return { page: Math.min(pages, Math.floor(at / (text.length / pages)) + 1), exact: false };
-  }
-  return { page: null, exact: false };
-}
-
-const snippetAt = (text, at, len) =>
-  text.slice(Math.max(0, at - 130), at + len + 150).replace(/\s+/g, ' ').trim();
-
-function hitsIn(text, term, pages, max) {
-  const hits = [];
-  const hay = text.toLowerCase(), nd = term.toLowerCase();
-  let at = 0;
-  while (hits.length < max) {
-    at = hay.indexOf(nd, at);
-    if (at === -1) break;
-    const p = pageAt(text, at, pages);
-    hits.push({ ...p, snippet: snippetAt(text, at, nd.length) });
-    at += nd.length;
-  }
-  if (hits.length) return hits;
-
-  // نام‌های شیمیایی را با کنار گذاشتن نشانه‌ها هم می‌سنجیم
-  const needle = squash(term);
-  if (needle.length < 3) return hits;
-  const { out, pos } = squashMap(text);
-  let k = 0;
-  while (hits.length < max) {
-    k = out.indexOf(needle, k);
-    if (k === -1) break;
-    const start = pos[k];
-    const end = pos[k + needle.length - 1] ?? start;
-    const p = pageAt(text, start, pages);
-    hits.push({ ...p, loose: true, snippet: snippetAt(text, start, end - start + 1) });
-    k += needle.length;
-  }
-  return hits;
-}
-
 app.get('/api/search-text', async (req, res) => {
-  const terms = String(req.query.q || '').split('|').map((t) => t.trim()).filter(Boolean);
-  if (!terms.length || terms.some((t) => t.length < 2))
+  // «|» واژه‌های الزامی را جدا می‌کند (همه باید باشند) و «~» مترادف‌های یک
+  // واژه را (هر کدام کافی است) — چون یک ترکیب چند نام دارد
+  const groups = String(req.query.q || '').split('|')
+    .map((g) => g.split('~').map((t) => t.trim()).filter(Boolean))
+    .filter((g) => g.length);
+  if (!groups.length || groups.some((g) => g[0].length < 2))
     return res.status(400).json({ error: 'عبارت را کامل‌تر بنویسید' });
+  const terms = groups.map((g) => g[0]);
   const perPaper = Math.max(1, Math.min(40, Number(req.query.per) || 8));
 
   const { rows } = await q(
@@ -202,7 +153,14 @@ app.get('/api/search-text', async (req, res) => {
   const papers = [];
   let totalHits = 0;
   for (const r of rows) {
-    const byTerm = terms.map((t) => ({ term: t, hits: hitsIn(r.raw_text, t, r.pages, perPaper) }));
+    const byTerm = groups.map((g) => {
+      // هر کدام از مترادف‌ها که پیدا شد، همان کافی است
+      for (const variant of g) {
+        const hits = hitsIn(r.raw_text, variant, r.pages, perPaper);
+        if (hits.length) return { term: g[0], matched: variant, hits };
+      }
+      return { term: g[0], hits: [] };
+    });
     // اگر چند واژه خواسته شده، مقاله‌ای که همه را ندارد کنار می‌رود
     if (byTerm.some((b) => !b.hits.length)) continue;
     const n = byTerm.reduce((s, b) => s + b.hits.length, 0);
