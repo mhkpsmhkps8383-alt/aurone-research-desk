@@ -6,7 +6,12 @@ import { q, ensureSchema, seedIfEmpty } from './db.js';
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(join(__dirname, 'public'), { maxAge: '1h' }));
+// با ETag اعتبارسنجی می‌شود؛ بدون کش کردنِ کور، تا به‌روزرسانی‌ها بی‌درنگ دیده شوند
+app.use(express.static(join(__dirname, 'public'), {
+  etag: true,
+  maxAge: 0,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
 
 const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
 const KEY = process.env.ANTHROPIC_API_KEY;
