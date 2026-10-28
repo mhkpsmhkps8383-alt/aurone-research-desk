@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=20';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=20';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=21';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=21';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -26,7 +26,7 @@ let TEMPLATES = [];
 let FIGIDX = {};   // شمارهٔ تصویرهای ذخیره‌شدهٔ هر مقاله
 
 /* ───── مسیریابی */
-const VIEWS = ['add', 'discover', 'library', 'matrix', 'templates', 'chem'];
+const VIEWS = ['add', 'discover', 'library', 'infiles', 'matrix', 'templates', 'chem'];
 function route() {
   let v = (location.hash || '#add').slice(1);
   if (!VIEWS.includes(v)) v = 'add';
@@ -142,7 +142,8 @@ async function textFromFile(file) {
       const tc = await (await pdf.getPage(i)).getTextContent();
       parts.push(tc.items.map((it) => it.str).join(' '));
     }
-    return { text: parts.join('\n\n').replace(/[ \t]{2,}/g, ' ').trim(), pages: pdf.numPages };
+    // \f مرز صفحه است: بعداً می‌شود گفت هر عبارت در کدام صفحه پیدا شده
+    return { text: parts.join('\n\f\n').replace(/[ \t]{2,}/g, ' ').trim(), pages: pdf.numPages };
   }
   if (name.endsWith('.docx')) {
     if (!window.mammoth) throw new Error('خوانندهٔ Word بارگذاری نشد');
@@ -296,7 +297,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=20');
+    const { extractFigures } = await import('/figures.js?v=21');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -333,7 +334,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=20');
+  const { toCompact } = await import('/figures.js?v=21');
   let done = 0;
   for (const f of picks) {
     try {
@@ -381,7 +382,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=20');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=21');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -477,7 +478,7 @@ $('#impIn').onchange = async (e) => {
   IMPORTED = [];
   const kinds = [];
   try {
-    const imp = await import('/import.js?v=20');
+    const imp = await import('/import.js?v=21');
     for (const f of files) {
       try {
         const { kind, records } = await imp.parseFile(f);
@@ -599,7 +600,13 @@ function resultCard(r, extra) {
   if (r.authors) c.appendChild(el('div', 'hint', r.authors.split(',').slice(0, 8).join('،')));
   const meta = [r.journal, r.doi].filter(Boolean).join(' · ');
   if (meta) c.appendChild(el('div', 'doi', meta));
-  if (r.matchedIn && r.snippet) {
+  for (const f of r.foundTerms || []) {
+    const sn = el('div', 'snippet');
+    sn.appendChild(el('span', 'hint', '«' + f.term + '» در ' + f.where + ': '));
+    sn.appendChild(document.createTextNode('…' + f.snippet + '…'));
+    c.appendChild(sn);
+  }
+  if (!r.foundTerms && r.matchedIn && r.snippet) {
     const sn = el('div', 'snippet');
     sn.appendChild(el('span', 'hint', 'در ' + r.matchedIn + ': '));
     sn.appendChild(document.createTextNode('…' + r.snippet + '…'));
@@ -697,14 +704,14 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=20');
+    const { searchAll } = await import('/sources.js?v=21');
 
     // در حالت دقیق، نام ترکیب را اول به مترادف‌هایش گسترش می‌دهیم: مقالات
     // معمولاً نام رایج را می‌نویسند، نه املایی که کاربر تایپ کرده
     let names = [qv], chem = null;
     if (exactOnly) {
       $('#sState').textContent = 'بررسی نام ترکیب در PubChem…';
-      const { expandChemicalName } = await import('/phrase.js?v=20');
+      const { expandChemicalName } = await import('/phrase.js?v=21');
       chem = await expandChemicalName(qv);
       names = chem.names;
     }
@@ -718,9 +725,33 @@ async function runSearch(reset = true) {
     const dupes = j.raw - j.results.length;
 
     let rows = j.results, exactNote = '';
+
+    // واژه‌های الزامی: مقاله‌ای که همهٔ آنها را نداشته باشد کنار می‌رود
+    const andTerms = $('#sAnd').value.split(/[,،]/).map((t) => t.trim()).filter((t) => t.length > 1);
+    if (andTerms.length) {
+      const { keepOnlyExact } = await import('/phrase.js?v=21');
+      let pool = rows, missing = 0;
+      for (const term of andTerms) {
+        $('#sState').textContent = 'بررسی واژهٔ «' + term + '» در ' + fa(pool.length) + ' نتیجه…';
+        const res = await keepOnlyExact(pool, [term], {
+          fullText: readFullText,
+          onProgress: (n, total) => {
+            $('#sState').textContent = '«' + term + '»: ' + fa(n) + ' از ' + fa(total);
+          },
+        });
+        missing += res.droppedCount;
+        // جای یافتن هر واژه را نگه می‌داریم تا روی کارت نشان دهیم
+        pool = res.kept.map((r) => ({
+          ...r,
+          foundTerms: [...(r.foundTerms || []), { term, where: r.matchedIn, snippet: r.snippet }],
+        }));
+      }
+      rows = pool;
+      exactNote += ' · همهٔ واژه‌ها لازم بود؛ ' + fa(missing) + ' نتیجه کنار رفت';
+    }
     if (exactOnly) {
       // پایگاه‌ها عبارت را می‌شکنند، پس درستی را خودمان می‌سنجیم
-      const { keepOnlyExact } = await import('/phrase.js?v=20');
+      const { keepOnlyExact } = await import('/phrase.js?v=21');
       $('#sState').textContent = 'بررسی عبارت دقیق در ' + fa(rows.length) + ' نتیجه…';
       const res = await keepOnlyExact(rows, names, {
         fullText: readFullText,
@@ -756,6 +787,7 @@ async function runSearch(reset = true) {
 }
 $('#sGo').onclick = () => runSearch(true);
 $('#sQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(true); });
+$('#sAnd').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(true); });
 $('#sYear').onchange = () => { if ($('#sQ').value.trim()) runSearch(true); };
 $('#sNext').onclick = () => { sPage++; runSearch(false); };
 document.querySelectorAll('.chip.ex').forEach((b) => {
@@ -893,6 +925,59 @@ $('#enrichGo').onclick = async () => {
   enrichStatus();
 };
 
+/* ═════════ جست‌وجو در متن فایل‌های کتابخانه ═════════ */
+async function searchInFiles() {
+  const st = $('#ifState'), out = $('#ifOut');
+  const main = $('#ifQ').value.trim();
+  if (main.length < 2) { st.textContent = 'عبارت را کامل‌تر بنویسید'; return; }
+  const extra = $('#ifAnd').value.split(/[,،]/).map((s) => s.trim()).filter((s) => s.length > 1);
+  const terms = [main, ...extra];
+  st.textContent = 'در حال گشتن…';
+  out.innerHTML = '';
+  try {
+    const j = await api('/api/search-text?q=' + encodeURIComponent(terms.join('|')));
+    if (!j.papers.length) {
+      st.textContent = terms.length > 1
+        ? 'هیچ فایلی هر ' + fa(terms.length) + ' واژه را با هم نداشت (از ' + fa(j.searched) + ' فایل)'
+        : 'در هیچ‌کدام از ' + fa(j.searched) + ' فایل پیدا نشد';
+      if (!j.searched) out.appendChild(el('div', 'note',
+        'هنوز فایلی با متن کامل در کتابخانه نیست. از بخش «افزودن مقاله» فایل PDF بدهید تا متنش ذخیره شود.'));
+      return;
+    }
+    st.textContent = fa(j.totalHits) + ' مورد در ' + fa(j.papers.length) + ' مقاله (از ' + fa(j.searched) + ' فایل بررسی‌شده)';
+
+    j.papers.forEach((p) => {
+      const c = el('div', 'card');
+      const head = el('div', 'tags');
+      head.appendChild(el('span', 'tag id', '#' + fa(p.id)));
+      if (p.filename) head.appendChild(el('span', 'tag', p.filename));
+      if (p.pages) head.appendChild(el('span', 'tag', fa(p.pages) + ' صفحه'));
+      head.appendChild(el('span', 'tag ok', fa(p.count) + ' مورد'));
+      c.appendChild(head);
+      c.appendChild(el('h3', null, p.title));
+
+      p.terms.forEach((t) => {
+        if (terms.length > 1) c.appendChild(el('div', 'hint', '«' + t.term + '» — ' + fa(t.hits.length) + ' بار'));
+        t.hits.forEach((h) => {
+          const sn = el('div', 'snippet');
+          const label = h.page
+            ? 'صفحهٔ ' + fa(h.page) + (h.exact ? '' : ' (تخمینی)') + ': '
+            : '';
+          sn.appendChild(el('span', 'hint', label));
+          sn.appendChild(document.createTextNode('…' + h.snippet + '…'));
+          if (h.loose) sn.appendChild(el('span', 'hint', ' — با نادیده گرفتن نشانه‌ها'));
+          c.appendChild(sn);
+        });
+      });
+      out.appendChild(c);
+    });
+  } catch (e) { st.textContent = e.message; }
+}
+$('#ifGo').onclick = searchInFiles;
+['#ifQ', '#ifAnd'].forEach((s) => $(s).addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') searchInFiles();
+}));
+
 /* ═════════ جدول شواهد ═════════ */
 let MX = { head: [], rows: [] };
 
@@ -901,7 +986,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=20');
+    const ex = await import('/extract.js?v=21');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -1018,7 +1103,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=20');
+    const pc = await import('/pubchem.js?v=21');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1169,7 +1254,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=20');
+    const cl = await import('/chembl.js?v=21');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1208,7 +1293,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=20');
+    const cl = await import('/chembl.js?v=21');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 

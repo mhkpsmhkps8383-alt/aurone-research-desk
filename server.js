@@ -129,6 +129,93 @@ app.post('/api/papers/:id/text',
     res.json({ ok: true, chars: clipped.length, received: req.body.length });
   });
 
+/* ───────── جست‌وجوی واژه در متن کاملِ فایل‌های کتابخانه
+   هر جای متن که عبارت آمده را با شمارهٔ صفحه و متن اطرافش برمی‌گرداند.
+   هنگام استخراج، صفحه‌ها با \f از هم جدا شده‌اند، پس شمارهٔ صفحه دقیق است؛
+   برای فایل‌های قدیمی‌تر که این مرز را ندارند، از روی جای عبارت تخمین می‌زنیم. */
+
+const squash = (s) => s.toLowerCase().replace(/[^a-z0-9؀-ۿ]+/g, '');
+
+function squashMap(s) {
+  let out = '';
+  const pos = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i].toLowerCase();
+    if (/[a-z0-9؀-ۿ]/.test(ch)) { out += ch; pos.push(i); }
+  }
+  return { out, pos };
+}
+
+function pageAt(text, at, pages) {
+  let ff = 0;
+  for (let i = 0; i < at; i++) if (text.charCodeAt(i) === 12) ff++;
+  if (ff > 0) return { page: ff + 1, exact: true };
+  if (pages > 0 && text.length) {
+    return { page: Math.min(pages, Math.floor(at / (text.length / pages)) + 1), exact: false };
+  }
+  return { page: null, exact: false };
+}
+
+const snippetAt = (text, at, len) =>
+  text.slice(Math.max(0, at - 130), at + len + 150).replace(/\s+/g, ' ').trim();
+
+function hitsIn(text, term, pages, max) {
+  const hits = [];
+  const hay = text.toLowerCase(), nd = term.toLowerCase();
+  let at = 0;
+  while (hits.length < max) {
+    at = hay.indexOf(nd, at);
+    if (at === -1) break;
+    const p = pageAt(text, at, pages);
+    hits.push({ ...p, snippet: snippetAt(text, at, nd.length) });
+    at += nd.length;
+  }
+  if (hits.length) return hits;
+
+  // نام‌های شیمیایی را با کنار گذاشتن نشانه‌ها هم می‌سنجیم
+  const needle = squash(term);
+  if (needle.length < 3) return hits;
+  const { out, pos } = squashMap(text);
+  let k = 0;
+  while (hits.length < max) {
+    k = out.indexOf(needle, k);
+    if (k === -1) break;
+    const start = pos[k];
+    const end = pos[k + needle.length - 1] ?? start;
+    const p = pageAt(text, start, pages);
+    hits.push({ ...p, loose: true, snippet: snippetAt(text, start, end - start + 1) });
+    k += needle.length;
+  }
+  return hits;
+}
+
+app.get('/api/search-text', async (req, res) => {
+  const terms = String(req.query.q || '').split('|').map((t) => t.trim()).filter(Boolean);
+  if (!terms.length || terms.some((t) => t.length < 2))
+    return res.status(400).json({ error: 'عبارت را کامل‌تر بنویسید' });
+  const perPaper = Math.max(1, Math.min(40, Number(req.query.per) || 8));
+
+  const { rows } = await q(
+    `SELECT id, title, filename, pages, raw_text FROM papers
+     WHERE raw_text IS NOT NULL AND length(raw_text) > 20 ORDER BY id`);
+
+  const papers = [];
+  let totalHits = 0;
+  for (const r of rows) {
+    const byTerm = terms.map((t) => ({ term: t, hits: hitsIn(r.raw_text, t, r.pages, perPaper) }));
+    // اگر چند واژه خواسته شده، مقاله‌ای که همه را ندارد کنار می‌رود
+    if (byTerm.some((b) => !b.hits.length)) continue;
+    const n = byTerm.reduce((s, b) => s + b.hits.length, 0);
+    totalHits += n;
+    papers.push({
+      id: r.id, title: r.title, filename: r.filename, pages: r.pages,
+      count: n, terms: byTerm,
+    });
+  }
+  papers.sort((a, b) => b.count - a.count);
+  res.json({ terms, papers, totalHits, searched: rows.length });
+});
+
 // ───────── تصویرهای مقاله (ساختارها)
 app.post('/api/papers/:id/figures',
   express.raw({ type: ['image/*', 'application/octet-stream'], limit: '4mb' }),

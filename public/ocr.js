@@ -76,7 +76,7 @@ export async function ocrPdf(buf, { langs = 'fas+eng', maxPages = 12, onProgress
   }
 
   return {
-    text: parts.join('\n\n').replace(/[ \t]{2,}/g, ' ').trim(),
+    text: parts.join('\n\f\n').replace(/[ \t]{2,}/g, ' ').trim(),   // \f = مرز صفحه
     pages: pdf.numPages,
     ocrPages: total,
   };
