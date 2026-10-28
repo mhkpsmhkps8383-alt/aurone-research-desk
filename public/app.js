@@ -1,4 +1,5 @@
 import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=7';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=8';
 
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -179,6 +180,8 @@ function renderQueue() {
     if (it.rec.pages) head.appendChild(el('span', 'tag', fa(it.rec.pages) + ' صفحه'));
     if (it.state === 'reading') head.appendChild(el('span', 'tag', 'در حال خواندن…'));
     if (it.enriched) head.appendChild(el('span', 'tag nrf', 'تکمیل‌شده از ' + it.enriched));
+    if (it.summaryKind === 'abstract') head.appendChild(el('span', 'tag ok', 'چکیدهٔ خود مقاله'));
+    if (it.summaryKind === 'extract') head.appendChild(el('span', 'tag', 'خلاصهٔ استخراجی'));
     if (it.state === 'saved') head.appendChild(el('span', 'tag ok', 'در کتابخانه ✓'));
     if (it.state === 'err') head.appendChild(el('span', 'tag no', it.error));
     const x = el('button', 'x', '×');
@@ -219,6 +222,16 @@ function renderQueue() {
       const one = el('button', 'btn sm', it.state === 'saved' ? 'ذخیرهٔ دوباره' : 'ذخیرهٔ همین یکی');
       one.onclick = () => saveOne(it);
       bar.appendChild(one);
+      if (it.rec.raw_text) {
+        const longer = el('button', 'btn ghost sm', 'خلاصهٔ بلندتر');
+        longer.onclick = () => {
+          const n = (it.summaryLen = Math.min(14, (it.summaryLen || 5) + 3));
+          it.rec.summary = summarize(it.rec.raw_text, { count: n, title: it.rec.title });
+          it.summaryKind = 'extract';
+          renderQueue();
+        };
+        bar.appendChild(longer);
+      }
       c.appendChild(bar);
     }
     w.appendChild(c);
@@ -250,7 +263,14 @@ async function addFiles(files) {
       const { text, pages } = await textFromFile(file);
       if (text.length < 40) throw new Error('متنی استخراج نشد — احتمالاً اسکن تصویری است');
       const g = guessMeta(text, file.name);
-      it.rec = { ...g, pages, filename: file.name, raw_text: text, summary: '', fields: {} };
+      // خلاصه را همین‌جا در مرورگر از خود متن می‌سازیم — چه DOI داشته باشد چه نداشته باشد
+      const sum = bestSummary(text, g.title);
+      it.rec = {
+        ...g, pages, filename: file.name, raw_text: text,
+        summary: sum.text,
+        fields: { 'واژه‌های کلیدی': kwOf(text, 8).join('، ') },
+      };
+      it.summaryKind = sum.kind;
       it.state = 'ready';
       renderQueue();
       // اگر DOI در متن بود، بقیهٔ اطلاعات را از پایگاه‌های باز می‌گیریم — حدسِ متنی جای این را نمی‌گیرد
@@ -265,8 +285,10 @@ async function addFiles(files) {
               year: d.year || it.rec.year,
               authors: d.authors || null,
               abstract: d.abstract || null,
-              summary: it.rec.summary || d.abstract || '',
+              // چکیدهٔ رسمیِ خود مقاله بر خلاصهٔ استخراجی اولویت دارد
+              summary: d.abstract || it.rec.summary || '',
             };
+            if (d.abstract) it.summaryKind = 'abstract';
             it.enriched = (d.found_in || []).join(' + ');
           }
         } catch { /* بدون اینترنت هم همان حدسِ متنی می‌ماند */ }
@@ -633,6 +655,24 @@ function paperCard(r) {
     c.appendChild(dl);
   }
   const row = el('div', 'row');
+  if (r.filename || r.source === 'file') {
+    const sm = el('button', 'btn ghost sm', r.summary ? 'خلاصهٔ تازه بساز' : 'خلاصه بساز');
+    sm.onclick = async () => {
+      sm.disabled = true; sm.textContent = 'در حال خواندن متن…';
+      try {
+        const t = await api('/api/papers/' + r.id + '/text');
+        if (!t.raw_text) throw new Error('متن این مقاله ذخیره نشده');
+        const s = bestSummary(t.raw_text, r.title);
+        if (!s.text) throw new Error('متن برای خلاصه کردن کافی نیست');
+        await api('/api/papers/' + r.id, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ summary: s.text }),
+        });
+        loadLibrary();
+      } catch (e) { sm.disabled = false; sm.textContent = e.message; }
+    };
+    row.appendChild(sm);
+  }
   if (r.oa_url) {
     const a = el('a', 'btn ghost sm', 'متن کامل');
     a.href = r.oa_url; a.target = '_blank'; a.rel = 'noopener';

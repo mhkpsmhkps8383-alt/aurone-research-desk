@@ -94,9 +94,10 @@ app.get('/api/papers/:id/text', async (req, res) => {
 });
 
 app.patch('/api/papers/:id', async (req, res) => {
-  const { note, tag } = req.body || {};
-  await q('UPDATE papers SET note=COALESCE($2,note), tag=COALESCE($3,tag), updated_at=now() WHERE id=$1',
-    [req.params.id, note ?? null, tag ?? null]);
+  const { note, tag, summary } = req.body || {};
+  await q(`UPDATE papers SET note=COALESCE($2,note), tag=COALESCE($3,tag),
+             summary=COALESCE($4,summary), updated_at=now() WHERE id=$1`,
+    [req.params.id, note ?? null, tag ?? null, summary ?? null]);
   res.json({ ok: true });
 });
 
