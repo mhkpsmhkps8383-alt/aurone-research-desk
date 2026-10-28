@@ -3,11 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>کتابخانهٔ اورون</title>
+<title>دستیار هوشمند</title>
+<meta name="description" content="کتابخانهٔ مقالات و ترکیبات اورون — افزودن مقاله، جست‌وجو و داده‌های محاسباتی">
+<meta name="theme-color" content="#06070e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="دستیار هوشمند">
+<link rel="apple-touch-startup-image" href="/splash-1290x2796.png" media="(device-width:430px) and (device-height:932px) and (-webkit-device-pixel-ratio:3)">
+<link rel="apple-touch-startup-image" href="/splash-1179x2556.png" media="(device-width:393px) and (device-height:852px) and (-webkit-device-pixel-ratio:3)">
+<link rel="apple-touch-startup-image" href="/splash-1170x2532.png" media="(device-width:390px) and (device-height:844px) and (-webkit-device-pixel-ratio:3)">
+<link rel="apple-touch-startup-image" href="/splash-1125x2436.png" media="(device-width:375px) and (device-height:812px) and (-webkit-device-pixel-ratio:3)">
+<link rel="apple-touch-startup-image" href="/splash-828x1792.png" media="(device-width:414px) and (device-height:896px) and (-webkit-device-pixel-ratio:2)">
+<link rel="apple-touch-startup-image" href="/splash-750x1334.png" media="(device-width:375px) and (device-height:667px) and (-webkit-device-pixel-ratio:2)">
+<meta property="og:title" content="دستیار هوشمند">
+<meta property="og:description" content="کتابخانهٔ مقالات و ترکیبات اورون">
+<meta property="og:image" content="/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=4">
+<link rel="stylesheet" href="/style.css?v=5">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -17,8 +36,8 @@
 <header>
   <div class="wrap hrow">
     <a class="brand" href="#add">
-      <span class="orb" aria-hidden="true"></span>
-      <span><b>کتابخانهٔ اورون</b><em>کتابخانهٔ مقالات</em></span>
+      <img class="orb" src="/icon.svg" alt="" width="34" height="34">
+      <span><b>دستیار هوشمند</b><em>کتابخانهٔ مقالات و ترکیبات</em></span>
     </a>
     <nav id="nav">
       <a href="#add" data-v="add">افزودن مقاله</a>
@@ -180,9 +199,14 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
 </main>
 
 <footer class="wrap">
-  دیتابیس روی Neon · تحلیل با Claude · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
+  دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script src="/app.js?v=4"></script>
+<script src="/app.js?v=5"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+</script>
 </body>
 </html>
