@@ -1,5 +1,5 @@
 import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=7';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=9';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=10';
 
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -183,6 +183,7 @@ function renderQueue() {
     if (it.summaryKind === 'abstract') head.appendChild(el('span', 'tag ok', 'چکیدهٔ خود مقاله'));
     if (it.summaryKind === 'extract') head.appendChild(el('span', 'tag', 'خلاصهٔ استخراجی'));
     if (it.state === 'saved') head.appendChild(el('span', 'tag ok', 'در کتابخانه ✓'));
+    if (it.textState) head.appendChild(el('span', 'tag', it.textState));
     if (it.state === 'err') head.appendChild(el('span', 'tag no', it.error));
     const x = el('button', 'x', '×');
     x.title = 'حذف از فهرست';
@@ -238,6 +239,32 @@ function renderQueue() {
   });
 }
 
+/** متن را با gzip فشرده می‌کند تا روی شبکه‌های کند هم بالا برود. */
+async function gzipBlob(str) {
+  const plain = new Blob([str]);
+  if (typeof CompressionStream === 'undefined') return { body: plain, type: 'application/octet-stream' };
+  const packed = await new Response(plain.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+  return { body: packed, type: 'application/gzip' };
+}
+
+/** متن کامل را جدا و فشرده می‌فرستد؛ شکستش مقاله را از بین نمی‌برد. */
+async function uploadText(id, text, it) {
+  if (!text) return;
+  const { body, type } = await gzipBlob(text.slice(0, 120000));
+  it.textState = 'در حال فرستادن متن کامل (' + fa(Math.round(body.size / 1024)) + ' کیلوبایت)…';
+  renderQueue();
+  try {
+    const r = await fetch('/api/papers/' + id + '/text', {
+      method: 'POST', headers: { 'content-type': type }, body,
+    });
+    if (!r.ok) throw new Error('سرور متن را نپذیرفت');
+    it.textState = 'متن کامل ذخیره شد';
+  } catch {
+    it.textState = 'متن کامل فرستاده نشد — مقاله و خلاصه‌اش ذخیره شده‌اند';
+  }
+  renderQueue();
+}
+
 async function saveOne(it) {
   const st = $('#qState');
   try {
@@ -245,10 +272,14 @@ async function saveOne(it) {
     it.rec.template = $('#tplSel').value;
     it.rec.source = 'file';
     if (!it.rec.title) { st.textContent = 'عنوان نمی‌تواند خالی باشد'; return false; }
-    await post('/api/papers', it.rec);
+    // متن کامل همراه رکورد نمی‌رود؛ درخواست را سنگین و شکننده می‌کند
+    const { raw_text, ...light } = it.rec;
+    const saved = await post('/api/papers', light);
     it.state = 'saved';
+    it.savedId = saved.id;
     renderQueue();
     health();
+    uploadText(saved.id, raw_text, it);   // در پس‌زمینه؛ منتظرش نمی‌مانیم
     return true;
   } catch (e) { it.state = 'err'; it.error = e.message; renderQueue(); return false; }
 }

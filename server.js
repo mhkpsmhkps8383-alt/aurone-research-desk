@@ -1,5 +1,6 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { q, ensureSchema, seedIfEmpty } from './db.js';
 import { enrichDoi, searchPapers } from './scholar.js';
@@ -92,6 +93,24 @@ app.post('/api/papers', async (req, res) => {
   );
   res.json({ ok: true, id: rows[0].id });
 });
+
+/**
+ * متن کامل مقاله جداگانه و فشرده فرستاده می‌شود.
+ * دلیلش: سرعتِ آپلود روی برخی شبکه‌ها بسیار پایین است و فرستادن متن خام
+ * همراه خودِ رکورد، درخواست را به تایم‌اوت می‌برد. این‌طور مقاله فوری ذخیره
+ * می‌شود و متن پشت سرش می‌آید؛ اگر هم نرسید، مقاله و خلاصه‌اش سالم مانده‌اند.
+ */
+app.post('/api/papers/:id/text',
+  express.raw({ type: ['application/gzip', 'application/octet-stream'], limit: '12mb' }),
+  async (req, res) => {
+    let text = '';
+    try { text = gunzipSync(req.body).toString('utf8'); }
+    catch { text = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : ''; }
+    if (!text) return res.status(400).json({ error: 'متنی دریافت نشد' });
+    const clipped = text.slice(0, 120000);
+    await q('UPDATE papers SET raw_text=$2, updated_at=now() WHERE id=$1', [req.params.id, clipped]);
+    res.json({ ok: true, chars: clipped.length, received: req.body.length });
+  });
 
 app.get('/api/papers/:id/text', async (req, res) => {
   const { rows } = await q('SELECT title,filename,raw_text FROM papers WHERE id=$1', [req.params.id]);
