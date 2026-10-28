@@ -219,3 +219,7 @@ footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
 .qrow .x{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px}
 .qrow .x:hover{color:var(--red)}
 .card .body,.card h3,.kv dd,.answer{overflow-wrap:anywhere}
+
+.savedCard{border-color:rgba(157,255,60,.45)}
+.card .x{margin-inline-start:auto}
+.card .row{align-items:flex-end}

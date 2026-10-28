@@ -13,61 +13,12 @@ app.use(express.static(join(__dirname, 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
 }));
 
-const MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-5-5';
-const KEY = process.env.ANTHROPIC_API_KEY;
 
-/** یک فراخوانی ساده به Claude. اگر کلید تنظیم نشده باشد، خطای روشن برمی‌گرداند. */
-async function askClaude(prompt, { maxTokens = 2000, system } = {}) {
-  if (!KEY) {
-    const e = new Error('ANTHROPIC_API_KEY تنظیم نشده است');
-    e.code = 'no_key';
-    throw e;
-  }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      ...(system ? { system } : {}),
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    const e = new Error('Claude API: ' + res.status + ' ' + body.slice(0, 300));
-    e.code = res.status === 401 ? 'bad_key' : 'upstream';
-    throw e;
-  }
-  const data = await res.json();
-  return (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
-}
-
-function parseJson(text) {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fence ? fence[1] : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-  return JSON.parse(raw);
-}
-
-const ERR_FA = {
-  no_key: 'کلید Claude روی سرور تنظیم نشده. در داشبورد Render متغیر ANTHROPIC_API_KEY را اضافه کنید.',
-  bad_key: 'کلید Claude پذیرفته نشد. مقدار ANTHROPIC_API_KEY را در Render بررسی کنید.',
-  upstream: 'پاسخ از سرویس Claude گرفته نشد. چند لحظه بعد دوباره امتحان کنید.',
-};
-const fail = (res, e) => {
-  console.error(e.message);
-  res.status(e.code === 'no_key' || e.code === 'bad_key' ? 400 : 502)
-     .json({ error: ERR_FA[e.code] || 'خطای ناشناخته: ' + e.message, code: e.code || 'unknown' });
-};
 
 // ───────── وضعیت
 app.get('/api/health', async (_req, res) => {
   const n = await q('SELECT count(*)::int AS n FROM papers');
-  res.json({ ok: true, papers: n.rows[0].n, ai: Boolean(KEY), model: MODEL });
+  res.json({ ok: true, papers: n.rows[0].n });
 });
 
 // ───────── قالب‌ها
@@ -95,64 +46,6 @@ app.post('/api/templates', async (req, res) => {
 app.delete('/api/templates/:key', async (req, res) => {
   await q('DELETE FROM templates WHERE key=$1 AND builtin=false', [req.params.key]);
   res.json({ ok: true });
-});
-
-// ───────── تحلیل خودکار مقالهٔ جدید
-app.post('/api/analyze', async (req, res) => {
-  const { text, template = 'medchem' } = req.body || {};
-  if (!text || text.trim().length < 60)
-    return res.status(400).json({ error: 'متن مقاله یا چکیده را بگذارید (دست‌کم ۶۰ نویسه)' });
-  const t = await q('SELECT fields FROM templates WHERE key=$1', [template]);
-  if (!t.rows.length) return res.status(400).json({ error: 'قالب پیدا نشد' });
-  const fields = t.rows[0].fields;
-
-  const shape = fields.map((f) => `  "${f.key}": "…"   // ${f.label}${f.hint ? ' — ' + f.hint : ''}`).join('\n');
-  const prompt =
-`این متن یک مقالهٔ علمی است. آن را بخوان و اطلاعات خواسته‌شده را استخراج کن.
-
-قواعد:
-- فقط چیزی را بنویس که در متن آمده است. حدس نزن.
-- اگر موردی در متن نیست، مقدارش را رشتهٔ خالی بگذار.
-- مقادیر عددی را با واحدشان بیاور.
-- همهٔ پاسخ‌ها به فارسی باشد، جز نام ترکیب‌ها، آنزیم‌ها و اصطلاحات انگلیسی.
-- فقط JSON برگردان، بدون هیچ متن دیگر.
-
-شکل خروجی:
-{
-  "title": "…",          // عنوان مقاله
-  "doi": "…",            // DOI اگر در متن بود
-  "journal": "…",
-  "year": 0,
-  "authors": "…",        // نویسندهٔ اول و همکاران
-  "antioxidant": "yes|no|unclear",   // آیا اثر آنتی‌اکسیدانی بررسی و تأیید شده؟
-  "nrf2": true,          // آیا مسیر Nrf2 یا Keap1 یا ARE مطرح شده؟
-  "summary": "…",        // سه تا پنج جملهٔ فشرده از مهم‌ترین نکات
-${shape}
-}
-
-متن مقاله:
-"""
-${String(text).slice(0, 120000)}
-"""`;
-
-  try {
-    const out = await askClaude(prompt, { maxTokens: 3000 });
-    const data = parseJson(out);
-    const known = new Set(fields.map((f) => f.key));
-    const extra = {};
-    for (const k of Object.keys(data)) if (known.has(k)) extra[k] = data[k];
-    res.json({
-      title: data.title || '', doi: data.doi || '', journal: data.journal || '',
-      year: Number(data.year) || null, authors: data.authors || '',
-      antioxidant: ['yes', 'no', 'unclear'].includes(data.antioxidant) ? data.antioxidant : 'unclear',
-      nrf2: Boolean(data.nrf2), summary: data.summary || '',
-      best_compound: data.best_compound || '', template, fields: extra,
-    });
-  } catch (e) {
-    if (e instanceof SyntaxError)
-      return res.status(502).json({ error: 'پاسخ مدل قابل خواندن نبود. دوباره امتحان کنید.', code: 'bad_json' });
-    fail(res, e);
-  }
 });
 
 // ───────── کتابخانه
@@ -208,52 +101,6 @@ app.patch('/api/papers/:id', async (req, res) => {
 app.delete('/api/papers/:id', async (req, res) => {
   await q('DELETE FROM papers WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
-});
-
-// ───────── پرسش از کل کتابخانه
-app.post('/api/ask', async (req, res) => {
-  const { question } = req.body || {};
-  if (!question || question.trim().length < 5)
-    return res.status(400).json({ error: 'سؤال را بنویسید' });
-  const { rows } = await q(
-    `SELECT id,title,doi,tag,antioxidant,nrf2,best_compound,summary,fields FROM papers
-     ORDER BY id`);
-  if (!rows.length) return res.status(400).json({ error: 'کتابخانه خالی است' });
-
-  const corpus = rows.map((r) => {
-    const f = Object.entries(r.fields || {}).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' | ');
-    return `[#${r.id}] ${r.title}
-DOI: ${r.doi || '—'} | دسته: ${r.tag || '—'} | آنتی‌اکسیدان: ${r.antioxidant} | Nrf2: ${r.nrf2 ? 'بله' : 'خیر'}
-بهترین ترکیب: ${(r.best_compound || '—').slice(0, 400)}
-خلاصه: ${(r.summary || '').slice(0, 900)}
-${f ? 'فیلدها: ' + f.slice(0, 900) : ''}`;
-  }).join('\n\n').slice(0, 180000);
-
-  const prompt =
-`تو دستیار پژوهشی هستی. فقط بر پایهٔ مقالات زیر به سؤال پاسخ بده.
-
-قواعد:
-- هر ادعایی را به شمارهٔ مقاله ارجاع بده، به شکل [#12].
-- اگر پاسخ در این مقالات نیست، صریح بگو که این مجموعه جواب را ندارد.
-- اگر مقالات با هم اختلاف دارند، اختلاف را نشان بده و پنهانش نکن.
-- فارسی بنویس، روان و دقیق، بدون مقدمه‌چینی.
-
-سؤال: ${question}
-
-مقالات:
-${corpus}`;
-
-  try {
-    const answer = await askClaude(prompt, { maxTokens: 2500 });
-    await q('INSERT INTO asks (question,answer,n_papers) VALUES ($1,$2,$3)',
-      [question, answer, rows.length]);
-    res.json({ answer, n_papers: rows.length });
-  } catch (e) { fail(res, e); }
-});
-
-app.get('/api/asks', async (_req, res) => {
-  const { rows } = await q('SELECT id,question,answer,n_papers,created_at FROM asks ORDER BY id DESC LIMIT 30');
-  res.json(rows);
 });
 
 // ───────── کتابخانهٔ ترکیبات و محاسبات

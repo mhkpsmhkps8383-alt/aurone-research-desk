@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>میز پژوهش اورون</title>
+<title>کتابخانهٔ اورون</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=3">
+<link rel="stylesheet" href="/style.css?v=4">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -16,14 +16,13 @@
 
 <header>
   <div class="wrap hrow">
-    <a class="brand" href="#analyze">
+    <a class="brand" href="#add">
       <span class="orb" aria-hidden="true"></span>
-      <span><b>میز پژوهش</b><em>دستیار تحلیل مقاله</em></span>
+      <span><b>کتابخانهٔ اورون</b><em>کتابخانهٔ مقالات</em></span>
     </a>
     <nav id="nav">
-      <a href="#analyze" data-v="analyze">تحلیل مقاله</a>
+      <a href="#add" data-v="add">افزودن مقاله</a>
       <a href="#library" data-v="library">کتابخانه</a>
-      <a href="#ask" data-v="ask">پرسش</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
       <a href="#chem" data-v="chem">ترکیبات</a>
     </nav>
@@ -34,9 +33,9 @@
 <main class="wrap">
 
 <!-- ═══ تحلیل ═══ -->
-<section id="v-analyze">
-  <h1 class="neon">تحلیل خودکار مقاله</h1>
-  <p class="lede">چکیده یا متن کامل مقاله را بچسبانید. Claude آن را می‌خواند، فیلدهای قالب انتخابی را استخراج می‌کند و شما می‌توانید نتیجه را در کتابخانه ذخیره کنید.</p>
+<section id="v-add">
+  <h1 class="neon">افزودن مقاله به کتابخانه</h1>
+  <p class="lede">فایل مقاله را بدهید؛ متنش در همین مرورگر خوانده می‌شود و عنوان، DOI و سال خودکار از متن بیرون کشیده می‌شوند. هر چیزی را خواستید اصلاح کنید و ذخیره بزنید.</p>
 
   <div class="panel drop" id="drop">
     <div class="dropInner">
@@ -48,35 +47,43 @@
       <button class="btn" id="pickBtn" type="button">انتخاب فایل</button>
       <input type="file" id="fileIn" accept=".pdf,.docx,.txt,.md" multiple hidden>
     </div>
-    <div id="queue" class="queue" hidden></div>
-    <div class="row" id="queueBar" hidden>
-      <button class="btn primary" id="runQueue">تحلیل همهٔ فایل‌ها</button>
-      <button class="btn ghost" id="saveAll" hidden>ذخیرهٔ همه در کتابخانه</button>
-      <button class="btn ghost" id="clearQueue">خالی کردن فهرست</button>
-      <span class="hint" id="qState"></span>
-    </div>
   </div>
 
-  <div class="panel" style="margin-top:14px">
-    <div class="row">
-      <label class="fld">قالب استخراج
-        <select id="tplSel"></select>
-      </label>
-      <label class="fld">دسته (اختیاری)
-        <input id="tagIn" type="text" placeholder="آنتی‌اکسیدان، ضدسرطان، …">
-      </label>
-    </div>
-    <label class="fld" style="margin-top:14px">یا متن را مستقیم بچسبانید
-      <textarea id="txtIn" rows="9" placeholder="چکیده یا متن کامل مقاله را اینجا بچسبانید…"></textarea>
+  <div class="row" id="queueBar" hidden style="margin-top:14px">
+    <label class="fld">قالب فیلدها
+      <select id="tplSel"></select>
     </label>
-    <div class="row" style="margin-top:14px">
-      <button class="btn primary" id="goAnalyze">تحلیل کن</button>
-      <button class="btn ghost" id="clearIn">پاک کردن</button>
-      <span class="hint" id="aState"></span>
+    <label class="fld">دسته برای همه
+      <input id="tagIn" type="text" placeholder="آنتی‌اکسیدان، ضدسرطان، …">
+    </label>
+    <div class="fld" style="flex-direction:row;gap:8px;align-items:flex-end;justify-content:flex-end">
+      <button class="btn primary" id="saveAll">ذخیرهٔ همه در کتابخانه</button>
+      <button class="btn ghost" id="clearQueue">خالی کردن</button>
     </div>
   </div>
+  <span class="hint" id="qState"></span>
 
-  <div id="result" hidden></div>
+  <div id="queue" class="stack"></div>
+
+  <h2 class="sub">یا بدون فایل، دستی وارد کنید</h2>
+  <div class="panel">
+    <div class="row">
+      <label class="fld grow">عنوان<input id="mTitle" placeholder="عنوان مقاله"></label>
+      <label class="fld">سال<input id="mYear" type="number" placeholder="۲۰۲۶"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label class="fld grow">DOI<input id="mDoi" placeholder="10.1016/…"></label>
+      <label class="fld">مجله<input id="mJournal" placeholder="Eur. J. Med. Chem."></label>
+      <label class="fld">دسته<input id="mTag" placeholder="آنتی‌اکسیدان"></label>
+    </div>
+    <label class="fld" style="margin-top:12px">یادداشت یا خلاصه
+      <textarea id="mSummary" rows="4" placeholder="هر چیزی که می‌خواهید دربارهٔ این مقاله یادتان بماند…"></textarea>
+    </label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="saveManual">افزودن به کتابخانه</button>
+      <span class="hint" id="mState"></span>
+    </div>
+  </div>
 </section>
 
 <!-- ═══ کتابخانه ═══ -->
@@ -113,30 +120,10 @@
   <div id="libList" class="stack"></div>
 </section>
 
-<!-- ═══ پرسش ═══ -->
-<section id="v-ask" hidden>
-  <h1 class="neon">پرسش از کل کتابخانه</h1>
-  <p class="lede">سؤال بپرسید؛ جواب فقط از روی مقالات ذخیره‌شدهٔ خودتان ساخته می‌شود و هر ادعا به شمارهٔ مقاله ارجاع داده می‌شود.</p>
-
-  <div class="panel">
-    <label class="fld">سؤال
-      <textarea id="qAsk" rows="3" placeholder="مثلاً: کدام الگوی استخلاف بیشترین اثر آنتی‌اکسیدانی را داشت و کدام مقالات آن را تأیید می‌کنند؟"></textarea>
-    </label>
-    <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="goAsk">بپرس</button>
-      <span class="hint" id="askState"></span>
-    </div>
-  </div>
-
-  <div id="askOut" class="answer" hidden></div>
-  <h2 class="sub" id="histTitle" hidden>پرسش‌های پیشین</h2>
-  <div id="askHist" class="stack"></div>
-</section>
-
 <!-- ═══ قالب‌ها ═══ -->
 <section id="v-templates" hidden>
-  <h1 class="neon">قالب‌های استخراج</h1>
-  <p class="lede">قالب تعیین می‌کند چه فیلدهایی از هر مقاله بیرون کشیده شود. سه قالب آماده هست و می‌توانید قالب دلخواه خودتان را بسازید.</p>
+  <h1 class="neon">قالب‌های فیلد</h1>
+  <p class="lede">قالب تعیین می‌کند هنگام افزودن مقاله چه فیلدهایی برای پر کردن جلویتان بیاید. سه قالب آماده هست و می‌توانید قالب دلخواه خودتان را بسازید.</p>
   <div id="tplList" class="stack"></div>
 
   <div class="panel" style="margin-top:20px">
@@ -196,6 +183,6 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دیتابیس روی Neon · تحلیل با Claude · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script src="/app.js?v=3"></script>
+<script src="/app.js?v=4"></script>
 </body>
 </html>

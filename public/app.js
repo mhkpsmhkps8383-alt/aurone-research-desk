@@ -12,20 +12,18 @@ const post = (url, body) => api(url, {
 });
 
 let TEMPLATES = [];
-let draft = null;
 
 /* ───── مسیریابی */
-const VIEWS = ['analyze', 'library', 'ask', 'templates', 'chem'];
+const VIEWS = ['add', 'library', 'templates', 'chem'];
 function route() {
-  let v = (location.hash || '#analyze').slice(1);
-  if (!VIEWS.includes(v)) v = 'analyze';
+  let v = (location.hash || '#add').slice(1);
+  if (!VIEWS.includes(v)) v = 'add';
   VIEWS.forEach((k) => { $('#v-' + k).hidden = k !== v; });
   document.querySelectorAll('#nav a').forEach((a) => {
     a.toggleAttribute('aria-current', a.dataset.v === v);
     if (a.dataset.v === v) a.setAttribute('aria-current', 'page');
   });
   if (v === 'library') loadLibrary();
-  if (v === 'ask') loadAsks();
   if (v === 'templates') renderTemplates();
   if (v === 'chem') loadChem();
 }
@@ -36,8 +34,8 @@ async function health() {
   const s = $('#status');
   try {
     const h = await api('/api/health');
-    if (h.ai) { s.textContent = 'آمادهٔ تحلیل · ' + fa(h.papers) + ' مقاله'; s.className = 'status ok'; }
-    else { s.textContent = 'کلید Claude تنظیم نشده'; s.className = 'status warn'; }
+    s.textContent = fa(h.papers) + ' مقاله در کتابخانه';
+    s.className = 'status ok';
   } catch { s.textContent = 'سرور در دسترس نیست'; s.className = 'status warn'; }
 }
 
@@ -102,73 +100,6 @@ $('#saveTpl').onclick = async () => {
   } catch (e) { st.textContent = e.message; }
 };
 
-/* ───── تحلیل */
-$('#clearIn').onclick = () => { $('#txtIn').value = ''; $('#result').hidden = true; $('#aState').textContent = ''; };
-
-$('#goAnalyze').onclick = async () => {
-  const text = $('#txtIn').value.trim();
-  const st = $('#aState'), btn = $('#goAnalyze');
-  if (text.length < 60) { st.textContent = 'متن خیلی کوتاه است'; return; }
-  btn.disabled = true;
-  st.innerHTML = '<span class="spin"></span>Claude در حال خواندن مقاله…';
-  $('#result').hidden = true;
-  try {
-    draft = await post('/api/analyze', { text, template: $('#tplSel').value });
-    draft.raw_text = text;
-    draft.tag = $('#tagIn').value.trim() || null;
-    showResult(draft);
-    st.textContent = '';
-  } catch (e) {
-    st.textContent = '';
-    const r = $('#result'); r.hidden = false; r.innerHTML = '';
-    r.appendChild(el('div', 'note err', e.message));
-  } finally { btn.disabled = false; }
-};
-
-function showResult(d) {
-  const r = $('#result'); r.hidden = false; r.innerHTML = '';
-  const c = el('div', 'panel');
-  const head = el('div', 'tags');
-  if (d.antioxidant === 'yes') head.appendChild(el('span', 'tag ok', 'اثر آنتی‌اکسیدانی دارد'));
-  if (d.antioxidant === 'no') head.appendChild(el('span', 'tag no', 'آنتی‌اکسیدانی بررسی نشده'));
-  if (d.nrf2) head.appendChild(el('span', 'tag nrf', 'Nrf2'));
-  if (d.year) head.appendChild(el('span', 'tag', fa(d.year)));
-  c.appendChild(head);
-  c.appendChild(el('h3', null, d.title || 'بدون عنوان'));
-  if (d.doi) c.appendChild(el('div', 'doi', d.doi));
-  if (d.journal || d.authors) c.appendChild(el('div', 'hint', [d.journal, d.authors].filter(Boolean).join(' · ')));
-  if (d.summary) c.appendChild(el('div', 'body', d.summary));
-
-  const tpl = TEMPLATES.find((t) => t.key === d.template);
-  const dl = el('dl', 'kv');
-  (tpl ? tpl.fields : []).forEach((f) => {
-    const v = (d.fields || {})[f.key];
-    if (!v) return;
-    dl.appendChild(el('dt', null, f.label));
-    dl.appendChild(el('dd', null, String(v)));
-  });
-  if (dl.children.length) c.appendChild(dl);
-
-  const row = el('div', 'row');
-  const save = el('button', 'btn primary', 'ذخیره در کتابخانه');
-  const again = el('button', 'btn ghost', 'تحلیل دوباره');
-  const note = el('span', 'hint');
-  save.onclick = async () => {
-    save.disabled = true; note.textContent = 'در حال ذخیره…';
-    try {
-      await post('/api/papers', { ...d, source: 'ai' });
-      note.textContent = 'ذخیره شد';
-      save.textContent = 'ذخیره شد ✓';
-      health();
-    } catch (e) { note.textContent = e.message; save.disabled = false; }
-  };
-  again.onclick = () => $('#goAnalyze').click();
-  row.append(save, again, note);
-  c.appendChild(row);
-  r.appendChild(c);
-}
-
-
 /* ───── افزودن فایل مقاله */
 if (window.pdfjsLib) {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -181,67 +112,149 @@ async function textFromFile(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith('.pdf')) {
     if (!window.pdfjsLib) throw new Error('خوانندهٔ PDF بارگذاری نشد');
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    const max = Math.min(pdf.numPages, 40);
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const max = Math.min(pdf.numPages, 25);
     const parts = [];
     for (let i = 1; i <= max; i++) {
-      const page = await pdf.getPage(i);
-      const tc = await page.getTextContent();
+      const tc = await (await pdf.getPage(i)).getTextContent();
       parts.push(tc.items.map((it) => it.str).join(' '));
     }
-    const text = parts.join('\n\n').replace(/[ \t]{2,}/g, ' ').trim();
-    if (text.length < 120)
-      throw new Error('متنی استخراج نشد — این PDF احتمالاً اسکن تصویری است');
-    return { text, pages: pdf.numPages };
+    return { text: parts.join('\n\n').replace(/[ \t]{2,}/g, ' ').trim(), pages: pdf.numPages };
   }
   if (name.endsWith('.docx')) {
     if (!window.mammoth) throw new Error('خوانندهٔ Word بارگذاری نشد');
-    const buf = await file.arrayBuffer();
-    const out = await mammoth.extractRawText({ arrayBuffer: buf });
+    const out = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
     return { text: (out.value || '').trim(), pages: null };
   }
-  if (name.endsWith('.txt') || name.endsWith('.md')) {
-    return { text: (await file.text()).trim(), pages: null };
-  }
+  if (name.endsWith('.txt') || name.endsWith('.md')) return { text: (await file.text()).trim(), pages: null };
   throw new Error('فقط PDF، Word، txt و md پشتیبانی می‌شود');
 }
 
+/** از روی متن مقاله، شناسه‌ها را بدون هیچ سرویس بیرونی حدس می‌زند. */
+function guessMeta(text, filename) {
+  const head = text.slice(0, 4000);
+  const doi = (head.match(/\b10\.\d{4,9}\/[^\s"'<>,;)\]]+/i) || [])[0] || '';
+  const years = [...head.matchAll(/\b(19[89]\d|20[0-4]\d)\b/g)].map((m) => +m[1]);
+  const year = years.length ? Math.max(...years) : null;
+
+  const SKIP = /^(abstract|introduction|keywords?|contents|available online|journal homepage|research (article|paper)|review|original|http|www\.|doi|©|received|accepted|published|elsevier|springer|wiley|open access)/i;
+  let title = '';
+  for (const raw of head.split(/\n+/)) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (line.length < 25 || line.length > 220) continue;
+    if (SKIP.test(line)) continue;
+    if ((line.match(/\d/g) || []).length > line.length / 4) continue;
+    title = line;
+    break;
+  }
+  if (!title) title = filename.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+
+  const journal = (head.match(/\b(Journal|Bioorganic|European Journal|Molecules|RSC Advances|Tetrahedron|Phytochemistry|Food Chemistry|Chemistry)[^\n|]{0,60}/i) || [])[0] || '';
+  return { doi, year, title, journal: journal.replace(/\s+/g, ' ').trim().slice(0, 90) };
+}
+
+function fieldInput(it, key, label, value, type) {
+  const l = el('label', 'fld', null);
+  l.textContent = label;
+  const i = document.createElement(type === 'area' ? 'textarea' : 'input');
+  if (type === 'num') i.type = 'number';
+  if (type === 'area') i.rows = 3;
+  i.value = value || '';
+  i.oninput = () => { it.rec[key] = i.value; };
+  l.appendChild(i);
+  return l;
+}
+
 function renderQueue() {
-  const w = $('#queue');
-  w.hidden = QUEUE.length === 0;
   $('#queueBar').hidden = QUEUE.length === 0;
-  $('#saveAll').hidden = !QUEUE.some((it) => it.state === 'done');
+  const w = $('#queue');
   w.innerHTML = '';
-  QUEUE.forEach((it, i) => {
-    const row = el('div', 'qrow' + (it.state === 'done' ? ' done' : it.state === 'saved' ? ' saved' : it.state === 'err' ? ' err' : ''));
-    row.appendChild(el('span', 'nm', it.file.name));
-    const map = {
-      idle: 'در صف', reading: 'در حال خواندن…', analyzing: 'Claude در حال تحلیل…',
-      done: 'تحلیل شد', saving: 'در حال ذخیره…', saved: 'در کتابخانه ✓', err: it.error || 'خطا',
-    };
-    row.appendChild(el('span', 'st', map[it.state] || it.state));
-    if (it.state === 'done' || it.state === 'saved') {
-      const v = el('button', 'btn sm ghost', 'نمایش');
-      v.onclick = () => showResult(it.draft);
-      row.appendChild(v);
+  QUEUE.forEach((it, idx) => {
+    const c = el('div', 'card' + (it.state === 'saved' ? ' savedCard' : ''));
+    const head = el('div', 'tags');
+    head.appendChild(el('span', 'tag id', it.file.name));
+    if (it.rec.pages) head.appendChild(el('span', 'tag', fa(it.rec.pages) + ' صفحه'));
+    if (it.state === 'reading') head.appendChild(el('span', 'tag', 'در حال خواندن…'));
+    if (it.state === 'saved') head.appendChild(el('span', 'tag ok', 'در کتابخانه ✓'));
+    if (it.state === 'err') head.appendChild(el('span', 'tag no', it.error));
+    const x = el('button', 'x', '×');
+    x.title = 'حذف از فهرست';
+    x.onclick = () => { QUEUE.splice(idx, 1); renderQueue(); };
+    head.appendChild(x);
+    c.appendChild(head);
+
+    if (it.state === 'ready' || it.state === 'saved') {
+      const r1 = el('div', 'row');
+      r1.appendChild(fieldInput(it, 'title', 'عنوان', it.rec.title));
+      r1.querySelector('.fld').classList.add('grow');
+      r1.appendChild(fieldInput(it, 'year', 'سال', it.rec.year, 'num'));
+      c.appendChild(r1);
+      const r2 = el('div', 'row');
+      r2.appendChild(fieldInput(it, 'doi', 'DOI', it.rec.doi));
+      r2.querySelector('.fld').classList.add('grow');
+      r2.appendChild(fieldInput(it, 'journal', 'مجله', it.rec.journal));
+      c.appendChild(r2);
+      c.appendChild(fieldInput(it, 'summary', 'یادداشت یا خلاصه', it.rec.summary, 'area'));
+
+      const tpl = TEMPLATES.find((t) => t.key === $('#tplSel').value);
+      if (tpl) {
+        const r3 = el('div', 'row');
+        tpl.fields.forEach((f) => {
+          const l = el('label', 'fld', null);
+          l.textContent = f.label;
+          const i = document.createElement('input');
+          i.placeholder = f.hint || '';
+          i.value = (it.rec.fields || {})[f.key] || '';
+          i.oninput = () => { it.rec.fields = it.rec.fields || {}; it.rec.fields[f.key] = i.value; };
+          l.appendChild(i);
+          r3.appendChild(l);
+        });
+        c.appendChild(r3);
+      }
+      const bar = el('div', 'row');
+      const one = el('button', 'btn sm', it.state === 'saved' ? 'ذخیرهٔ دوباره' : 'ذخیرهٔ همین یکی');
+      one.onclick = () => saveOne(it);
+      bar.appendChild(one);
+      c.appendChild(bar);
     }
-    if (it.state !== 'analyzing' && it.state !== 'reading' && it.state !== 'saving') {
-      const x = el('button', 'x', '×');
-      x.title = 'حذف از فهرست';
-      x.onclick = () => { QUEUE.splice(i, 1); renderQueue(); };
-      row.appendChild(x);
-    }
-    w.appendChild(row);
+    w.appendChild(c);
   });
 }
 
-function addFiles(files) {
-  [...files].forEach((file) => {
-    if (QUEUE.some((it) => it.file.name === file.name && it.file.size === file.size)) return;
-    QUEUE.push({ file, state: 'idle', draft: null, error: '' });
-  });
-  renderQueue();
+async function saveOne(it) {
+  const st = $('#qState');
+  try {
+    it.rec.tag = $('#tagIn').value.trim() || it.rec.tag || null;
+    it.rec.template = $('#tplSel').value;
+    it.rec.source = 'file';
+    if (!it.rec.title) { st.textContent = 'عنوان نمی‌تواند خالی باشد'; return false; }
+    await post('/api/papers', it.rec);
+    it.state = 'saved';
+    renderQueue();
+    health();
+    return true;
+  } catch (e) { it.state = 'err'; it.error = e.message; renderQueue(); return false; }
+}
+
+async function addFiles(files) {
+  for (const file of [...files]) {
+    if (QUEUE.some((it) => it.file.name === file.name && it.file.size === file.size)) continue;
+    const it = { file, state: 'reading', error: '', rec: {} };
+    QUEUE.push(it);
+    renderQueue();
+    try {
+      const { text, pages } = await textFromFile(file);
+      if (text.length < 40) throw new Error('متنی استخراج نشد — احتمالاً اسکن تصویری است');
+      const g = guessMeta(text, file.name);
+      it.rec = { ...g, pages, filename: file.name, raw_text: text, summary: '', fields: {} };
+      it.state = 'ready';
+    } catch (e) {
+      it.state = 'err';
+      it.error = e.message;
+      it.rec = { title: file.name.replace(/\.[^.]+$/, ''), filename: file.name, fields: {} };
+    }
+    renderQueue();
+  }
 }
 
 const drop = $('#drop');
@@ -249,59 +262,51 @@ const drop = $('#drop');
   e.preventDefault(); drop.classList.add('over');
 }));
 ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
-  e.preventDefault(); if (ev === 'dragleave' && drop.contains(e.relatedTarget)) return;
+  e.preventDefault();
+  if (ev === 'dragleave' && drop.contains(e.relatedTarget)) return;
   drop.classList.remove('over');
 }));
 drop.addEventListener('drop', (e) => { if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); });
 $('#pickBtn').onclick = () => $('#fileIn').click();
 $('#fileIn').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
 $('#clearQueue').onclick = () => { QUEUE.length = 0; renderQueue(); $('#qState').textContent = ''; };
-
-$('#runQueue').onclick = async () => {
-  const btn = $('#runQueue'), st = $('#qState');
-  const todo = QUEUE.filter((it) => it.state === 'idle' || it.state === 'err');
-  if (!todo.length) { st.textContent = 'همهٔ فایل‌ها تحلیل شده‌اند'; return; }
-  btn.disabled = true;
-  let ok = 0;
-  for (const it of todo) {
-    try {
-      it.state = 'reading'; it.error = ''; renderQueue();
-      const { text, pages } = await textFromFile(it.file);
-      it.state = 'analyzing'; renderQueue();
-      st.innerHTML = '<span class="spin"></span>' + it.file.name;
-      const d = await post('/api/analyze', { text, template: $('#tplSel').value });
-      d.raw_text = text;
-      d.filename = it.file.name;
-      d.pages = pages;
-      d.source = 'file';
-      d.tag = $('#tagIn').value.trim() || null;
-      if (!d.title) d.title = it.file.name.replace(/\.[^.]+$/, '');
-      it.draft = d; it.state = 'done'; ok++;
-    } catch (e) {
-      it.state = 'err'; it.error = e.message;
-    }
-    renderQueue();
-  }
-  btn.disabled = false;
-  st.textContent = ok ? fa(ok) + ' فایل تحلیل شد' : 'هیچ فایلی تحلیل نشد';
-};
+$('#tplSel').addEventListener('change', renderQueue);
 
 $('#saveAll').onclick = async () => {
   const btn = $('#saveAll'), st = $('#qState');
   btn.disabled = true;
   let n = 0;
-  for (const it of QUEUE.filter((x) => x.state === 'done')) {
-    try {
-      it.state = 'saving'; renderQueue();
-      await post('/api/papers', it.draft);
-      it.state = 'saved'; n++;
-    } catch (e) { it.state = 'err'; it.error = e.message; }
-    renderQueue();
-  }
+  for (const it of QUEUE.filter((x) => x.state === 'ready')) if (await saveOne(it)) n++;
   btn.disabled = false;
-  st.textContent = fa(n) + ' مقاله به کتابخانه اضافه شد';
-  health();
+  st.textContent = n ? fa(n) + ' مقاله به کتابخانه اضافه شد' : 'چیزی برای ذخیره نبود';
 };
+
+/* ───── افزودن دستی */
+$('#saveManual').onclick = async () => {
+  const st = $('#mState');
+  const title = $('#mTitle').value.trim();
+  if (!title) { st.textContent = 'عنوان لازم است'; return; }
+  st.textContent = 'در حال ذخیره…';
+  try {
+    await post('/api/papers', {
+      title,
+      doi: $('#mDoi').value.trim() || null,
+      journal: $('#mJournal').value.trim() || null,
+      year: Number($('#mYear').value) || null,
+      tag: $('#mTag').value.trim() || null,
+      summary: $('#mSummary').value.trim() || null,
+      source: 'manual',
+    });
+    ['#mTitle', '#mDoi', '#mJournal', '#mYear', '#mTag', '#mSummary'].forEach((s2) => { $(s2).value = ''; });
+    st.textContent = 'اضافه شد';
+    health();
+  } catch (e) { st.textContent = e.message; }
+};
+
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 
 /* ───── کتابخانه */
 let onlyNrf2 = false, onlyFiles = false;
@@ -372,56 +377,6 @@ function paperCard(r) {
   row.appendChild(del);
   c.appendChild(row);
   return c;
-}
-
-/* ───── پرسش */
-$('#goAsk').onclick = async () => {
-  const question = $('#qAsk').value.trim();
-  const st = $('#askState'), out = $('#askOut'), btn = $('#goAsk');
-  if (question.length < 5) { st.textContent = 'سؤال را بنویسید'; return; }
-  btn.disabled = true;
-  st.innerHTML = '<span class="spin"></span>Claude در حال خواندن کتابخانه…';
-  out.hidden = true;
-  try {
-    const r = await post('/api/ask', { question });
-    out.hidden = false;
-    out.innerHTML = '';
-    out.appendChild(renderRefs(r.answer));
-    out.appendChild(el('div', 'hint', 'بر پایهٔ ' + fa(r.n_papers) + ' مقالهٔ کتابخانه'));
-    st.textContent = '';
-    loadAsks();
-  } catch (e) {
-    out.hidden = false; out.innerHTML = '';
-    out.appendChild(el('div', 'note err', e.message));
-    st.textContent = '';
-  } finally { btn.disabled = false; }
-};
-
-function renderRefs(text) {
-  const frag = document.createElement('div');
-  const parts = String(text).split(/(\[#\d+\])/g);
-  parts.forEach((p) => {
-    if (/^\[#\d+\]$/.test(p)) frag.appendChild(el('span', 'ref', p.replace(/\d+/, (d) => fa(d))));
-    else frag.appendChild(document.createTextNode(p));
-  });
-  return frag;
-}
-
-async function loadAsks() {
-  const rows = await api('/api/asks');
-  const w = $('#askHist'); w.innerHTML = '';
-  $('#histTitle').hidden = rows.length === 0;
-  rows.forEach((r) => {
-    const c = el('div', 'card');
-    c.appendChild(el('h3', null, r.question));
-    const d = el('details');
-    d.appendChild(el('summary', null, 'پاسخ'));
-    const body = el('div', 'body');
-    body.appendChild(renderRefs(r.answer || ''));
-    d.appendChild(body);
-    c.appendChild(d);
-    w.appendChild(c);
-  });
 }
 
 /* ───── ترکیبات */
