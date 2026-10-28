@@ -9,14 +9,20 @@ const UA = 'AuroneResearchDesk/1.0 (+https://aurone-research-desk.onrender.com)'
 const EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest';
 
 /** درخواست با مهلت زمانی؛ هیچ‌وقت نباید سرور را معلق نگه دارد. */
+export let lastError = null;
+
 async function get(url, ms = 9000) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   try {
     const r = await fetch(url, { signal: ctl.signal, headers: { 'User-Agent': UA, accept: 'application/json' } });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      lastError = `HTTP ${r.status} — ${(await r.text().catch(() => '')).slice(0, 200)}`;
+      return null;
+    }
     return await r.json();
-  } catch {
+  } catch (e) {
+    lastError = String(e?.cause?.message || e?.message || e).slice(0, 200);
     return null;
   } finally {
     clearTimeout(t);
@@ -156,7 +162,7 @@ export async function recommend(libraryDois, limit = 20) {
       for (const ref of w.referenced_works || []) counts.set(ref, (counts.get(ref) || 0) + 1);
   }
 
-  const debug = { seeds: seeds.length, refs_seen: counts.size };
+  const debug = { seeds: seeds.length, refs_seen: counts.size, lastError };
   const top = [...counts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 60);
   if (!top.length) return { results: [], debug };
 
