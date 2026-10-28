@@ -163,8 +163,9 @@ app.get('/api/papers', async (req, res) => {
   if (tag) { params.push(tag); where.push(`tag = $${params.length}`); }
   if (ao) { params.push(ao); where.push(`antioxidant = $${params.length}`); }
   if (nrf2 === '1') where.push('nrf2 = true');
+  if (req.query.files === '1') where.push("source = 'file'");
   const sql = `SELECT id,doi,title,journal,year,authors,tag,template,fields,best_compound,
-    antioxidant,nrf2,summary,note,source,created_at FROM papers
+    antioxidant,nrf2,summary,note,source,filename,pages,created_at FROM papers
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC, id DESC`;
   const { rows } = await q(sql, params);
   res.json(rows);
@@ -175,15 +176,21 @@ app.post('/api/papers', async (req, res) => {
   if (!b.title) return res.status(400).json({ error: 'عنوان لازم است' });
   const { rows } = await q(
     `INSERT INTO papers (doi,title,journal,year,authors,tag,template,fields,best_compound,
-       antioxidant,nrf2,summary,raw_text,note,source)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+       antioxidant,nrf2,summary,raw_text,note,source,filename,pages)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
     [b.doi || null, b.title, b.journal || null, b.year || null, b.authors || null,
      b.tag || null, b.template || 'medchem', JSON.stringify(b.fields || {}),
      b.best_compound || null, b.antioxidant || 'unclear', Boolean(b.nrf2),
      b.summary || null, (b.raw_text || '').slice(0, 40000) || null, b.note || null,
-     b.source || 'ai']
+     b.source || 'ai', b.filename || null, b.pages || null]
   );
   res.json({ ok: true, id: rows[0].id });
+});
+
+app.get('/api/papers/:id/text', async (req, res) => {
+  const { rows } = await q('SELECT title,filename,raw_text FROM papers WHERE id=$1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'پیدا نشد' });
+  res.json(rows[0]);
 });
 
 app.patch('/api/papers/:id', async (req, res) => {

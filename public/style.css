@@ -185,3 +185,36 @@ footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
   .fld{flex:1 1 100%}
   nav a{padding:5px 10px;font-size:13px}
 }
+
+/* ── افزودن فایل */
+.drop{border-style:dashed;border-width:2px;transition:border-color .15s, background .15s}
+.drop.over{border-color:var(--cyan);background:rgba(47,243,255,.06)}
+.dropInner{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.dropInner b{display:block;font-size:15px}
+.dropInner .hint{display:block}
+.dropIcon{
+  width:38px;height:38px;flex:0 0 auto;border-radius:11px;
+  border:1px solid rgba(47,243,255,.45);background:rgba(47,243,255,.09);
+  box-shadow:0 0 16px rgba(47,243,255,.2) inset;position:relative;
+}
+.dropIcon::before,.dropIcon::after{
+  content:"";position:absolute;background:var(--cyan);border-radius:2px;
+}
+.dropIcon::before{width:2px;height:16px;left:18px;top:11px}
+.dropIcon::after{width:16px;height:2px;left:11px;top:18px}
+.queue{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.qrow{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:#080a16;border:1px solid var(--edge);border-radius:10px;padding:9px 12px;
+}
+.qrow .nm{font-size:13.5px;flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+.qrow .st{font-size:12px;color:var(--ink-3);font-family:var(--mono);white-space:nowrap}
+.qrow.done{border-color:rgba(157,255,60,.4)}
+.qrow.done .st{color:var(--lime)}
+.qrow.saved{border-color:rgba(47,243,255,.45)}
+.qrow.saved .st{color:var(--cyan)}
+.qrow.err{border-color:rgba(255,90,110,.45)}
+.qrow.err .st{color:var(--red)}
+.qrow .x{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px}
+.qrow .x:hover{color:var(--red)}
+.card .body,.card h3,.kv dd,.answer{overflow-wrap:anywhere}

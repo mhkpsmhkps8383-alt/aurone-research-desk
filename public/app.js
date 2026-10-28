@@ -168,11 +168,151 @@ function showResult(d) {
   r.appendChild(c);
 }
 
+
+/* ───── افزودن فایل مقاله */
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+const QUEUE = [];
+
+async function textFromFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.pdf')) {
+    if (!window.pdfjsLib) throw new Error('خوانندهٔ PDF بارگذاری نشد');
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const max = Math.min(pdf.numPages, 40);
+    const parts = [];
+    for (let i = 1; i <= max; i++) {
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      parts.push(tc.items.map((it) => it.str).join(' '));
+    }
+    const text = parts.join('\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+    if (text.length < 120)
+      throw new Error('متنی استخراج نشد — این PDF احتمالاً اسکن تصویری است');
+    return { text, pages: pdf.numPages };
+  }
+  if (name.endsWith('.docx')) {
+    if (!window.mammoth) throw new Error('خوانندهٔ Word بارگذاری نشد');
+    const buf = await file.arrayBuffer();
+    const out = await mammoth.extractRawText({ arrayBuffer: buf });
+    return { text: (out.value || '').trim(), pages: null };
+  }
+  if (name.endsWith('.txt') || name.endsWith('.md')) {
+    return { text: (await file.text()).trim(), pages: null };
+  }
+  throw new Error('فقط PDF، Word، txt و md پشتیبانی می‌شود');
+}
+
+function renderQueue() {
+  const w = $('#queue');
+  w.hidden = QUEUE.length === 0;
+  $('#queueBar').hidden = QUEUE.length === 0;
+  $('#saveAll').hidden = !QUEUE.some((it) => it.state === 'done');
+  w.innerHTML = '';
+  QUEUE.forEach((it, i) => {
+    const row = el('div', 'qrow' + (it.state === 'done' ? ' done' : it.state === 'saved' ? ' saved' : it.state === 'err' ? ' err' : ''));
+    row.appendChild(el('span', 'nm', it.file.name));
+    const map = {
+      idle: 'در صف', reading: 'در حال خواندن…', analyzing: 'Claude در حال تحلیل…',
+      done: 'تحلیل شد', saving: 'در حال ذخیره…', saved: 'در کتابخانه ✓', err: it.error || 'خطا',
+    };
+    row.appendChild(el('span', 'st', map[it.state] || it.state));
+    if (it.state === 'done' || it.state === 'saved') {
+      const v = el('button', 'btn sm ghost', 'نمایش');
+      v.onclick = () => showResult(it.draft);
+      row.appendChild(v);
+    }
+    if (it.state !== 'analyzing' && it.state !== 'reading' && it.state !== 'saving') {
+      const x = el('button', 'x', '×');
+      x.title = 'حذف از فهرست';
+      x.onclick = () => { QUEUE.splice(i, 1); renderQueue(); };
+      row.appendChild(x);
+    }
+    w.appendChild(row);
+  });
+}
+
+function addFiles(files) {
+  [...files].forEach((file) => {
+    if (QUEUE.some((it) => it.file.name === file.name && it.file.size === file.size)) return;
+    QUEUE.push({ file, state: 'idle', draft: null, error: '' });
+  });
+  renderQueue();
+}
+
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.add('over');
+}));
+['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); if (ev === 'dragleave' && drop.contains(e.relatedTarget)) return;
+  drop.classList.remove('over');
+}));
+drop.addEventListener('drop', (e) => { if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); });
+$('#pickBtn').onclick = () => $('#fileIn').click();
+$('#fileIn').onchange = (e) => { addFiles(e.target.files); e.target.value = ''; };
+$('#clearQueue').onclick = () => { QUEUE.length = 0; renderQueue(); $('#qState').textContent = ''; };
+
+$('#runQueue').onclick = async () => {
+  const btn = $('#runQueue'), st = $('#qState');
+  const todo = QUEUE.filter((it) => it.state === 'idle' || it.state === 'err');
+  if (!todo.length) { st.textContent = 'همهٔ فایل‌ها تحلیل شده‌اند'; return; }
+  btn.disabled = true;
+  let ok = 0;
+  for (const it of todo) {
+    try {
+      it.state = 'reading'; it.error = ''; renderQueue();
+      const { text, pages } = await textFromFile(it.file);
+      it.state = 'analyzing'; renderQueue();
+      st.innerHTML = '<span class="spin"></span>' + it.file.name;
+      const d = await post('/api/analyze', { text, template: $('#tplSel').value });
+      d.raw_text = text;
+      d.filename = it.file.name;
+      d.pages = pages;
+      d.source = 'file';
+      d.tag = $('#tagIn').value.trim() || null;
+      if (!d.title) d.title = it.file.name.replace(/\.[^.]+$/, '');
+      it.draft = d; it.state = 'done'; ok++;
+    } catch (e) {
+      it.state = 'err'; it.error = e.message;
+    }
+    renderQueue();
+  }
+  btn.disabled = false;
+  st.textContent = ok ? fa(ok) + ' فایل تحلیل شد' : 'هیچ فایلی تحلیل نشد';
+};
+
+$('#saveAll').onclick = async () => {
+  const btn = $('#saveAll'), st = $('#qState');
+  btn.disabled = true;
+  let n = 0;
+  for (const it of QUEUE.filter((x) => x.state === 'done')) {
+    try {
+      it.state = 'saving'; renderQueue();
+      await post('/api/papers', it.draft);
+      it.state = 'saved'; n++;
+    } catch (e) { it.state = 'err'; it.error = e.message; }
+    renderQueue();
+  }
+  btn.disabled = false;
+  st.textContent = fa(n) + ' مقاله به کتابخانه اضافه شد';
+  health();
+};
+
 /* ───── کتابخانه */
-let onlyNrf2 = false;
+let onlyNrf2 = false, onlyFiles = false;
 $('#nrfChip').onclick = (e) => {
   onlyNrf2 = !onlyNrf2;
   e.target.setAttribute('aria-pressed', String(onlyNrf2));
+  loadLibrary();
+};
+$('#fileChip').onclick = (e) => {
+  onlyFiles = !onlyFiles;
+  e.target.setAttribute('aria-pressed', String(onlyFiles));
   loadLibrary();
 };
 ['#qLib', '#aoSel'].forEach((s) => $(s).addEventListener('input', () => loadLibrary()));
@@ -185,6 +325,7 @@ async function loadLibrary() {
     if ($('#qLib').value.trim()) p.set('search', $('#qLib').value.trim());
     if ($('#aoSel').value) p.set('ao', $('#aoSel').value);
     if (onlyNrf2) p.set('nrf2', '1');
+    if (onlyFiles) p.set('files', '1');
     const rows = await api('/api/papers?' + p);
     $('#libCount').textContent = fa(rows.length) + ' مقاله';
     const w = $('#libList'); w.innerHTML = '';
@@ -201,7 +342,9 @@ function paperCard(r) {
   if (r.antioxidant === 'yes') head.appendChild(el('span', 'tag ok', 'آنتی‌اکسیدان'));
   if (r.antioxidant === 'no') head.appendChild(el('span', 'tag no', 'بررسی نشده'));
   if (r.nrf2) head.appendChild(el('span', 'tag nrf', 'Nrf2'));
-  if (r.source !== 'manual' && r.source !== 'ai') head.appendChild(el('span', 'tag', 'کتابخانهٔ پایه'));
+  if (r.source === 'seed-59') head.appendChild(el('span', 'tag', 'کتابخانهٔ پایه'));
+  if (r.source === 'file') head.appendChild(el('span', 'tag id', 'از فایل'));
+  if (r.filename) head.appendChild(el('span', 'tag', r.filename + (r.pages ? ' · ' + fa(r.pages) + ' صفحه' : '')));
   c.appendChild(head);
   c.appendChild(el('h3', null, r.title));
   if (r.doi) c.appendChild(el('div', 'doi', r.doi));

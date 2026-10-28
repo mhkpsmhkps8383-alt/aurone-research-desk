@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 <body>
 <div class="grid-bg" aria-hidden="true"></div>
@@ -36,7 +38,26 @@
   <h1 class="neon">تحلیل خودکار مقاله</h1>
   <p class="lede">چکیده یا متن کامل مقاله را بچسبانید. Claude آن را می‌خواند، فیلدهای قالب انتخابی را استخراج می‌کند و شما می‌توانید نتیجه را در کتابخانه ذخیره کنید.</p>
 
-  <div class="panel">
+  <div class="panel drop" id="drop">
+    <div class="dropInner">
+      <div class="dropIcon" aria-hidden="true"></div>
+      <div>
+        <b>فایل مقاله‌ها را اینجا رها کنید</b>
+        <span class="hint">PDF، Word یا متن ساده — چند فایل با هم هم می‌شود</span>
+      </div>
+      <button class="btn" id="pickBtn" type="button">انتخاب فایل</button>
+      <input type="file" id="fileIn" accept=".pdf,.docx,.txt,.md" multiple hidden>
+    </div>
+    <div id="queue" class="queue" hidden></div>
+    <div class="row" id="queueBar" hidden>
+      <button class="btn primary" id="runQueue">تحلیل همهٔ فایل‌ها</button>
+      <button class="btn ghost" id="saveAll" hidden>ذخیرهٔ همه در کتابخانه</button>
+      <button class="btn ghost" id="clearQueue">خالی کردن فهرست</button>
+      <span class="hint" id="qState"></span>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
     <div class="row">
       <label class="fld">قالب استخراج
         <select id="tplSel"></select>
@@ -45,7 +66,7 @@
         <input id="tagIn" type="text" placeholder="آنتی‌اکسیدان، ضدسرطان، …">
       </label>
     </div>
-    <label class="fld" style="margin-top:14px">متن مقاله
+    <label class="fld" style="margin-top:14px">یا متن را مستقیم بچسبانید
       <textarea id="txtIn" rows="9" placeholder="چکیده یا متن کامل مقاله را اینجا بچسبانید…"></textarea>
     </label>
     <div class="row" style="margin-top:14px">
@@ -78,6 +99,7 @@
       </label>
       <div class="fld" style="justify-content:flex-end">
         <button class="chip" id="nrfChip" aria-pressed="false">فقط Nrf2</button>
+        <button class="chip" id="fileChip" aria-pressed="false">فقط فایل‌های خودم</button>
       </div>
     </div>
     <div class="row" style="margin-top:12px;gap:8px">

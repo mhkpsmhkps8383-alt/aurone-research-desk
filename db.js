@@ -90,6 +90,9 @@ export const BUILTIN_TEMPLATES = [
 
 export async function ensureSchema() {
   for (const ddl of DDL) await q(ddl);
+  // مهاجرت‌های تدریجی — روی دیتابیسی که از قبل ساخته شده هم بی‌خطر اجرا می‌شوند
+  await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS filename text`);
+  await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS pages int`);
   for (const t of BUILTIN_TEMPLATES) {
     await q(
       `INSERT INTO templates (key, name, description, fields, builtin)
