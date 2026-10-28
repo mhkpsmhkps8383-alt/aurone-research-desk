@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=12';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=12';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=13';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=13';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -25,7 +25,7 @@ const post = (url, body) => api(url, {
 let TEMPLATES = [];
 
 /* ───── مسیریابی */
-const VIEWS = ['add', 'discover', 'library', 'templates', 'chem'];
+const VIEWS = ['add', 'discover', 'library', 'matrix', 'templates', 'chem'];
 function route() {
   let v = (location.hash || '#add').slice(1);
   if (!VIEWS.includes(v)) v = 'add';
@@ -36,6 +36,7 @@ function route() {
   });
   if (v === 'library') { loadLibrary(); enrichStatus(); }
   if (v === 'discover') loadWatches();
+  if (v === 'matrix') fillMatrixTemplates();
   if (v === 'templates') renderTemplates();
   if (v === 'chem') loadChem();
 }
@@ -60,6 +61,15 @@ async function loadTemplates() {
     const o = el('option', null, t.name + (t.builtin ? '' : ' (شخصی)'));
     o.value = t.key; sel.appendChild(o);
   });
+}
+
+function fillMatrixTemplates() {
+  const sel = $('#mxTpl');
+  if (sel.options.length) return;
+  const none = el('option', null, 'بدون ستون‌های قالب');
+  none.value = '';
+  sel.appendChild(none);
+  TEMPLATES.forEach((t) => { const o = el('option', null, t.name); o.value = t.key; sel.appendChild(o); });
 }
 
 function renderTemplates() {
@@ -303,7 +313,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=12');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=13');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -519,7 +529,7 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=12');
+    const { searchAll } = await import('/sources.js?v=13');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
       use: [...pickedSources],
@@ -674,6 +684,123 @@ $('#enrichGo').onclick = async () => {
   enrichStatus();
 };
 
+/* ═════════ جدول شواهد ═════════ */
+let MX = { head: [], rows: [] };
+
+async function buildMatrix() {
+  const st = $('#mxState'), wrap = $('#mxWrap');
+  st.textContent = 'در حال ساختن…';
+  wrap.innerHTML = '';
+  try {
+    const ex = await import('/extract.js?v=13');
+    const p = new URLSearchParams();
+    if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
+    const rows = await api('/api/papers?' + p);
+    const tpl = TEMPLATES.find((t) => t.key === $('#mxTpl').value);
+    const wantNums = $('#mxNums').getAttribute('aria-pressed') === 'true';
+    const wantAssay = $('#mxAssay').getAttribute('aria-pressed') === 'true';
+
+    const head = ['#', 'عنوان', 'سال', 'مجله'];
+    if (tpl) head.push(...tpl.fields.map((f) => f.label));
+    if (wantAssay) head.push('آزمون‌ها');
+    if (wantNums) head.push('اعداد کلیدی');
+    head.push('DOI');
+
+    // متن کامل فقط برای مقالاتی که فایلشان را داده‌اید موجود است
+    const needText = (wantNums || wantAssay) && rows.filter((r) => r.source === 'file' || r.filename);
+    const texts = new Map();
+    if (needText && needText.length) {
+      st.textContent = 'خواندن متن ' + fa(needText.length) + ' مقاله…';
+      for (const r of needText) {
+        try {
+          const t = await api('/api/papers/' + r.id + '/text');
+          if (t.raw_text) texts.set(r.id, t.raw_text);
+        } catch { /* رد شو */ }
+      }
+    }
+
+    let numbered = 0;
+    const out = rows.map((r, i) => {
+      const body = texts.get(r.id) || r.abstract || r.summary || '';
+      const cells = [fa(i + 1), r.title || '—', r.year ? fa(r.year) : '—', r.journal || '—'];
+      if (tpl) tpl.fields.forEach((f) => cells.push((r.fields || {})[f.key] || '—'));
+      if (wantAssay) cells.push(ex.detectAssays(body).join('، ') || '—');
+      if (wantNums) {
+        const best = ex.bestPerAssay(ex.extractMeasures(body));
+        if (best.length) numbered++;
+        cells.push(best.map((b) =>
+          `${b.metric} ${b.value} ${b.unit}${b.assay !== '—' ? ' (' + b.assay + ')' : ''}${b.compound ? ' — ترکیب ' + b.compound : ''}`
+        ).join(' ؛ ') || '—');
+      }
+      cells.push(r.doi || '—');
+      return cells;
+    });
+
+    MX = { head, rows: out };
+    const table = el('table');
+    const thead = el('thead'), htr = el('tr');
+    head.forEach((h) => htr.appendChild(el('th', null, h)));
+    thead.appendChild(htr); table.appendChild(thead);
+    const tb = el('tbody');
+    out.forEach((cells) => {
+      const tr = el('tr');
+      cells.forEach((c) => tr.appendChild(el('td', null, String(c))));
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    wrap.appendChild(table);
+
+    st.textContent = fa(out.length) + ' مقاله در جدول' +
+      (wantNums ? ' — عدد زیست‌سنجی برای ' + fa(numbered) + ' مقاله پیدا شد' : '') +
+      (needText && !needText.length ? ' · برای اعداد، فایل مقاله لازم است' : '');
+  } catch (e) { st.textContent = e.message; }
+}
+
+$('#mxGo').onclick = buildMatrix;
+['#mxNums', '#mxAssay'].forEach((s) => {
+  $(s).onclick = (e) => e.target.setAttribute('aria-pressed',
+    String(e.target.getAttribute('aria-pressed') !== 'true'));
+});
+
+function download(name, text, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + text], { type: mime }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Word و Excel هر دو جدولِ HTML را می‌خوانند — بدون هیچ کتابخانهٔ بیرونی. */
+function matrixHtml(title) {
+  if (!MX.head.length) return null;
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8">
+<style>
+ body{font-family:Tahoma,'Times New Roman',serif;direction:rtl}
+ h1{font-size:16pt}
+ table{border-collapse:collapse;width:100%;font-size:9pt}
+ th,td{border:1px solid #666;padding:5px 7px;text-align:right;vertical-align:top}
+ th{background:#dbe5f1;font-weight:bold}
+</style></head><body dir="rtl">
+<h1>${esc(title)}</h1>
+<table><thead><tr>${MX.head.map((h) => '<th>' + esc(h) + '</th>').join('')}</tr></thead>
+<tbody>${MX.rows.map((r) => '<tr>' + r.map((c) => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('')}</tbody>
+</table></body></html>`;
+}
+
+$('#mxWord').onclick = () => {
+  const html = matrixHtml('جدول شواهد — کتابخانهٔ مقالات');
+  if (!html) { $('#mxState').textContent = 'اول جدول را بسازید'; return; }
+  download('جدول-شواهد.doc', html, 'application/msword');
+};
+
+$('#mxExcel').onclick = () => {
+  const html = matrixHtml('جدول شواهد');
+  if (!html) { $('#mxState').textContent = 'اول جدول را بسازید'; return; }
+  download('جدول-شواهد.xls', html, 'application/vnd.ms-excel');
+};
+
 /* ───── جست‌وجوی ترکیب در PubChem */
 const FA_NUM = (v, d = 2) => (v == null ? '—' : fa(Number(v).toFixed(d).replace(/\.?0+$/, '')));
 
@@ -682,7 +809,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=12');
+    const pc = await import('/pubchem.js?v=13');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 

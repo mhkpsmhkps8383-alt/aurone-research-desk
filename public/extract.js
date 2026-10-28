@@ -29,11 +29,16 @@ const ASSAYS = [
 ];
 
 /* نام معیار و واحدهایی که معنا دارند */
-const METRIC = '(IC\\s?50|IC₅₀|EC\\s?50|EC₅₀|SC\\s?50|SC₅₀|GI\\s?50|LD\\s?50|LC\\s?50|MIC|MBC|Ki|Kd|ED\\s?50)';
-const NUM = '(\\d{1,3}(?:[.,]\\d{1,3})?(?:\\s?[±]\\s?\\d{1,3}(?:[.,]\\d{1,3})?)?)';
+// \b لازم است وگرنه Ki داخل «skin» و «Kinetic» هم می‌افتد
+const METRIC = '\\b(IC\\s?50|IC₅₀|EC\\s?50|EC₅₀|SC\\s?50|SC₅₀|GI\\s?50|LD\\s?50|LC\\s?50|MIC|MBC|Ki|Kd|ED\\s?50)\\b';
+const ONE = '\\d{1,4}(?:[.,]\\d{1,3})?(?:\\s?±\\s?\\d{1,4}(?:[.,]\\d{1,3})?)?';
+// مقاله‌ها معمولاً چند عدد را پشت هم می‌آورند: «IC50 values of 6.3, 9.9 and 14.2 µM»
+const NUMS = `(${ONE}(?:\\s*(?:,|،|and|و|–|—|-|to|تا)\\s*${ONE})*)`;
 const UNIT = '(n[Mm]|µ[Mm]|μ[Mm]|uM|mM|m?g\\s?\\/\\s?m[Ll]|µg\\s?\\/\\s?m[Ll]|μg\\s?\\/\\s?m[Ll]|ppm|%)';
 
-const RX_METRIC = new RegExp(`${METRIC}\\s*(?:value\\s*)?(?:of|=|:|was|is|were|~|≈|about)?\\s*${NUM}\\s*${UNIT}`, 'gi');
+const RX_METRIC = new RegExp(
+  `${METRIC}\\s*(?:value?s?\\s*)?(?:of|=|:|was|is|were|ranging\\s+from|~|≈|about|در حدود)?\\s*${NUMS}\\s*${UNIT}`,
+  'gi');
 
 /* برچسب ترکیب: «compound 7»، «7a»، «derivative 12» */
 const RX_LABEL = /\b(?:compound|cpd|derivative|analog(?:ue)?|ligand)\s*[-–]?\s*([0-9]{1,3}[a-z]{0,2})\b/gi;
@@ -81,18 +86,21 @@ export function extractMeasures(text, { limit = 60 } = {}) {
   RX_METRIC.lastIndex = 0;
   while ((m = RX_METRIC.exec(t)) && out.length < limit) {
     const metric = m[1].replace(/\s+/g, '').replace('₅₀', '50').toUpperCase();
-    const value = m[2].replace(',', '.');
     const unit = unitOf(m[3]);
     const at = m.index;
-    const key = metric + value + unit + Math.round(at / 400);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      metric, value, unit,
-      assays: assayNear(t, at),
-      compound: labelNear(t, at),
-      context: tidy(t.slice(Math.max(0, at - 130), at + 150)),
-    });
+    const assays = assayNear(t, at);
+    const compound = labelNear(t, at);
+    const context = tidy(t.slice(Math.max(0, at - 130), at + 170));
+    // یک عبارت ممکن است چند عدد داشته باشد؛ هر کدام یک اندازه‌گیری است
+    for (const piece of m[2].split(/\s*(?:,|،|and|و|–|—|-|to|تا)\s*/)) {
+      const value = piece.trim().replace(',', '.');
+      if (!/^\d/.test(value)) continue;
+      const key = metric + value + unit;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ metric, value, unit, assays, compound, context });
+      if (out.length >= limit) break;
+    }
   }
   return out;
 }

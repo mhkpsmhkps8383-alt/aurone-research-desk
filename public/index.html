@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=12">
+<link rel="stylesheet" href="/style.css?v=13">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -43,6 +43,7 @@
       <a href="#add" data-v="add">افزودن مقاله</a>
       <a href="#discover" data-v="discover">کشف مقاله <span class="badge" id="newBadge" hidden></span></a>
       <a href="#library" data-v="library">کتابخانه</a>
+      <a href="#matrix" data-v="matrix">جدول شواهد</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
       <a href="#chem" data-v="chem">ترکیبات</a>
     </nav>
@@ -256,6 +257,36 @@
   <div id="libList" class="stack"></div>
 </section>
 
+<!-- ═══ جدول شواهد ═══ -->
+<section id="v-matrix" hidden>
+  <h1 class="neon">جدول شواهد</h1>
+  <p class="lede">همان جدول مروری که یک مقالهٔ review از آن ساخته می‌شود: هر سطر یک مقاله، هر ستون یک ویژگی. اعداد زیست‌سنجی هم از متن مقالاتی که فایلشان را داده‌اید بیرون کشیده می‌شوند.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label class="fld grow">فیلتر مقالات
+        <input id="mxQ" type="search" placeholder="خالی بگذارید تا همه بیایند">
+      </label>
+      <label class="fld">ستون‌ها از قالب
+        <select id="mxTpl"></select>
+      </label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="mxGo">بساز</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap;align-items:center">
+      <button class="chip sm" id="mxNums" aria-pressed="true">ستون اعداد زیست‌سنجی</button>
+      <button class="chip sm" id="mxAssay" aria-pressed="true">ستون آزمون‌ها</button>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="mxWord">خروجی Word</button>
+      <button class="btn ghost sm" id="mxExcel">خروجی Excel</button>
+    </div>
+    <span class="hint" id="mxState"></span>
+  </div>
+
+  <div class="tw" id="mxWrap"></div>
+</section>
+
 <!-- ═══ قالب‌ها ═══ -->
 <section id="v-templates" hidden>
   <h1 class="neon">قالب‌های فیلد</h1>
@@ -339,7 +370,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=12"></script>
+<script type="module" src="/app.js?v=13"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
