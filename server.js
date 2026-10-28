@@ -146,17 +146,46 @@ app.get('/api/search-text', async (req, res) => {
   const terms = groups.map((g) => g[0]);
   const perPaper = Math.max(1, Math.min(40, Number(req.query.per) || 8));
 
+  // همهٔ آنچه در کتابخانه هست گشته می‌شود، نه فقط متن فایل‌های آپلودشده
   const { rows } = await q(
-    `SELECT id, title, filename, pages, raw_text FROM papers
-     WHERE raw_text IS NOT NULL AND length(raw_text) > 20 ORDER BY id`);
+    `SELECT id, title, filename, pages, doi, journal, authors, abstract, summary,
+            note, best_compound, fields, raw_text, source
+     FROM papers ORDER BY id`);
+
+  const PARTS = [
+    ['title', 'عنوان'], ['abstract', 'چکیده'], ['summary', 'خلاصه'],
+    ['note', 'یادداشت'], ['best_compound', 'بهترین ترکیب'],
+    ['authors', 'نویسندگان'], ['journal', 'مجله'], ['doi', 'DOI'],
+  ];
 
   const papers = [];
-  let totalHits = 0;
+  let totalHits = 0, withText = 0;
   for (const r of rows) {
+    if (r.raw_text) withText++;
     const byTerm = groups.map((g) => {
       // هر کدام از مترادف‌ها که پیدا شد، همان کافی است
       for (const variant of g) {
-        const hits = hitsIn(r.raw_text, variant, r.pages, perPaper);
+        const hits = [];
+        for (const [col, label] of PARTS) {
+          if (!r[col]) continue;
+          for (const h of hitsIn(String(r[col]), variant, 0, 3)) {
+            hits.push({ ...h, page: null, where: label });
+          }
+        }
+        // فیلدهای قالب (استخراج دستی) هم بخشی از کتابخانه‌اند
+        const fieldsText = r.fields && Object.keys(r.fields).length
+          ? Object.entries(r.fields).map(([k, v]) => k + ': ' + v).join(' — ') : '';
+        if (fieldsText) {
+          for (const h of hitsIn(fieldsText, variant, 0, 3)) {
+            hits.push({ ...h, page: null, where: 'فیلدهای استخراج' });
+          }
+        }
+        // متن کامل فایل، با شمارهٔ صفحه
+        if (r.raw_text) {
+          for (const h of hitsIn(r.raw_text, variant, r.pages, perPaper)) {
+            hits.push({ ...h, where: 'متن کامل' });
+          }
+        }
         if (hits.length) return { term: g[0], matched: variant, hits };
       }
       return { term: g[0], hits: [] };
@@ -167,11 +196,12 @@ app.get('/api/search-text', async (req, res) => {
     totalHits += n;
     papers.push({
       id: r.id, title: r.title, filename: r.filename, pages: r.pages,
-      count: n, terms: byTerm,
+      source: r.source, hasText: Boolean(r.raw_text), count: n, terms: byTerm,
     });
   }
-  papers.sort((a, b) => b.count - a.count);
-  res.json({ terms, papers, totalHits, searched: rows.length });
+  // مقاله‌ای که متن کاملش را داریم شواهد بیشتری دارد، پس بالاتر می‌نشیند
+  papers.sort((a, b) => (b.hasText - a.hasText) || (b.count - a.count));
+  res.json({ terms, papers, totalHits, searched: rows.length, withText });
 });
 
 // ───────── تصویرهای مقاله (ساختارها)
@@ -254,7 +284,9 @@ app.get('/api/scholar/enrich', async (req, res) => {
 // جست‌وجو در Europe PMC (شامل کل PubMed)
 app.get('/api/scholar/search', async (req, res) => {
   const out = await searchPapers(req.query.q || '', req.query.page, req.query.years || '');
-  res.status(out.error ? 400 : 200).json(out);
+  // خطای پایگاهِ بیرونی را با وضعیت ۲۰۰ برمی‌گردانیم تا پیام واقعی‌اش به
+  // کاربر برسد؛ وگرنه فقط کد خطای خودمان دیده می‌شد
+  res.json(out);
 });
 
 const ENRICH_COLS = `title=COALESCE(NULLIF($2,''),title), journal=COALESCE(NULLIF($3,''),journal),

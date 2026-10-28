@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=22">
+<link rel="stylesheet" href="/style.css?v=23">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -43,7 +43,7 @@
       <a href="#add" data-v="add">افزودن مقاله</a>
       <a href="#discover" data-v="discover">کشف مقاله <span class="badge" id="newBadge" hidden></span></a>
       <a href="#library" data-v="library">کتابخانه</a>
-      <a href="#infiles" data-v="infiles">جست‌وجو در فایل‌ها</a>
+      <a href="#infiles" data-v="infiles">جست‌وجو در کتابخانه</a>
       <a href="#matrix" data-v="matrix">جدول شواهد</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
       <a href="#chem" data-v="chem">ترکیبات</a>
@@ -182,9 +182,10 @@
         <button class="chip sm" id="exactChip" aria-pressed="false" title="فقط نتایجی که عینِ همین عبارت در آنها آمده">فقط عبارت دقیق</button>
         <button class="chip sm" id="ftChip" aria-pressed="true" title="متن کامل مقالات دسترسی‌آزاد هم بررسی شود">متن کامل را هم بخوان</button>
         <label class="fld" style="flex:1 1 240px">واژه‌های الزامی — همه باید در مقاله باشند
-          <input id="sAnd" placeholder="Nrf2 , amino">
+          <input id="sAnd" placeholder="مثلاً:  Nrf2 , amino">
+          <span class="hint" id="sAndNote"></span>
         </label>
-        <span class="hint" id="exactNote">برای نام‌های شیمیایی این را روشن کنید؛ تفاوت کاما و خط تیره و حروف بزرگ نادیده گرفته می‌شود.</span>
+        <span class="hint" id="exactNote">واژه‌ها را با <b>کاما</b> از هم جدا کنید. برای نام‌های شیمیایی «فقط عبارت دقیق» را روشن کنید؛ تفاوت کاما و خط تیره و حروف بزرگ نادیده گرفته می‌شود.</span>
       </div>
       <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
         <span class="hint">نمونه:</span>
@@ -285,8 +286,8 @@
 
 <!-- ═══ جست‌وجو در فایل‌های کتابخانه ═══ -->
 <section id="v-infiles" hidden>
-  <h1 class="neon">جست‌وجو در فایل‌ها</h1>
-  <p class="lede">واژه را می‌دهید و در متن کاملِ همهٔ فایل‌هایی که به کتابخانه داده‌اید می‌گردد؛ می‌گوید در کدام مقاله و کدام صفحه آمده و جملهٔ اطرافش را نشان می‌دهد.</p>
+  <h1 class="neon">جست‌وجو در کتابخانه</h1>
+  <p class="lede">در همهٔ آنچه در کتابخانه دارید می‌گردد: عنوان، چکیده، خلاصه، یادداشت، فیلدهای استخراج، و متن کاملِ فایل‌هایی که آپلود کرده‌اید. می‌گوید در کدام مقاله و کجا آمده — و برای فایل‌ها، در کدام صفحه.</p>
 
   <div class="panel glow">
     <div class="row">
@@ -299,7 +300,8 @@
     </div>
     <div class="row" style="margin-top:10px">
       <label class="fld grow">واژه‌های دیگری که باید در همان مقاله باشند
-        <input id="ifAnd" placeholder="اختیاری — با کاما جدا کنید">
+        <input id="ifAnd" placeholder="اختیاری — با کاما جدا کنید، مثلاً:  amino">
+        <span class="hint" id="ifAndNote"></span>
       </label>
     </div>
     <span class="hint" id="ifState"></span>
@@ -462,7 +464,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=22"></script>
+<script type="module" src="/app.js?v=23"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

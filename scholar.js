@@ -11,6 +11,16 @@ const EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest';
 /** درخواست با مهلت زمانی؛ هیچ‌وقت نباید سرور را معلق نگه دارد. */
 export let lastError = null;
 
+/** پیام فارسیِ روشن از روی خطایی که واقعاً رخ داده. */
+export function whyFailed() {
+  const e = String(lastError || '');
+  if (/temporarily unavailable|503/i.test(e)) return 'سرویسش موقتاً پایین است';
+  if (/429|rate limit/i.test(e)) return 'سهمیهٔ درخواست پر شده';
+  if (/abort|timeout/i.test(e)) return 'پاسخ خیلی دیر شد';
+  if (/400/.test(e)) return 'عبارت را نپذیرفت';
+  return 'پاسخ نداد';
+}
+
 async function get(url, ms = 9000) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
@@ -140,7 +150,7 @@ export async function searchPapers(query, page = 1, years = '') {
     `&pageSize=25&page=${Math.max(1, Math.min(40, Number(page) || 1))}&sort=CITED%20desc`,
     12000
   );
-  if (!j) return { error: 'پایگاه پاسخ نداد' };
+  if (!j) return { error: whyFailed(), reason: lastError };
   const results = (j.resultList?.result || []).map((r) => {
     const m = fromEpmc(r);
     return {
