@@ -148,8 +148,9 @@ export async function recommend(libraryDois, limit = 20) {
 
   // OpenAlex تا ۵۰ شناسه را در یک درخواست می‌پذیرد
   for (let i = 0; i < seeds.length; i += 25) {
-    const filt = seeds.slice(i, i + 25).map((d) => 'doi:' + d).join('|');
-    const j = await get(`https://api.openalex.org/works?filter=${encodeURIComponent(filt)}&per-page=25&select=id,referenced_works`, 12000);
+    // نحو OR در OpenAlex: filter=doi:a|b — نه اینکه کلید تکرار شود
+    const filt = 'doi:' + seeds.slice(i, i + 25).join('|');
+    const j = await get(`https://api.openalex.org/works?filter=${filt}&per-page=25&select=id,referenced_works`, 15000);
     for (const w of j?.results || [])
       for (const ref of w.referenced_works || []) counts.set(ref, (counts.get(ref) || 0) + 1);
   }
