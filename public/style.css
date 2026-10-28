@@ -280,3 +280,7 @@ footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
 .figCell input{position:absolute;inset-inline-end:10px;inset-block-start:10px;
   width:17px;height:17px;accent-color:var(--lime);cursor:pointer;z-index:2}
 .figGrid.saved .figCell{cursor:zoom-in}
+.molMini{display:block;width:92px;height:62px;object-fit:contain;margin-top:5px;
+  border-radius:6px;background:#fff}
+#clOut table{font-size:13px}
+#clOut td a{word-break:break-word}

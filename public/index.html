@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=15">
+<link rel="stylesheet" href="/style.css?v=16">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -336,6 +336,47 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
     <div id="pcCard"></div>
   </div>
 
+  <h2 class="sub">فعالیت زیستی — ChEMBL</h2>
+  <p class="lede" style="margin-top:-6px">داده‌های IC50 و Ki که از دل مقالات شیمی دارویی استخراج و یکدست شده‌اند. هر عدد مقالهٔ مرجعش را دارد، و با یک دکمه وارد کتابخانه‌تان می‌شود.</p>
+
+  <div class="panel glow">
+    <div class="tabs" id="clTabs">
+      <button class="tab on" data-cl="mol">بر پایهٔ ترکیب</button>
+      <button class="tab" data-cl="tgt">بر پایهٔ هدف</button>
+    </div>
+
+    <div id="cl-mol">
+      <div class="row">
+        <label class="fld grow">نام ترکیب یا SMILES
+          <input id="clQ" placeholder="sulfuretin  ·  aureusidin  ·  quercetin">
+        </label>
+        <div class="fld" style="justify-content:flex-end">
+          <button class="btn primary" id="clGo">فعالیت‌هایش را بیاور</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cl-tgt" hidden>
+      <div class="row">
+        <label class="fld grow">نام آنزیم یا گیرنده
+          <input id="clT" placeholder="tyrosinase  ·  monoamine oxidase B  ·  xanthine oxidase">
+        </label>
+        <label class="fld">معیار
+          <select id="clType">
+            <option>IC50</option><option>Ki</option><option>EC50</option><option>Kd</option>
+          </select>
+        </label>
+        <div class="fld" style="justify-content:flex-end">
+          <button class="btn primary" id="clTGo">قوی‌ترین ترکیب‌ها</button>
+        </div>
+      </div>
+      <div id="clTargets" class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"></div>
+    </div>
+
+    <span class="hint" id="clState"></span>
+  </div>
+  <div id="clOut"></div>
+
   <div class="panel">
     <div class="row">
       <label class="fld">مرتب‌سازی
@@ -370,7 +411,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=15"></script>
+<script type="module" src="/app.js?v=16"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=15';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=15';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=16';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=16';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -296,7 +296,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=15');
+    const { extractFigures } = await import('/figures.js?v=16');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -333,7 +333,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=15');
+  const { toCompact } = await import('/figures.js?v=16');
   let done = 0;
   for (const f of picks) {
     try {
@@ -381,7 +381,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=15');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=16');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -597,7 +597,7 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=15');
+    const { searchAll } = await import('/sources.js?v=16');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
       use: [...pickedSources],
@@ -760,7 +760,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=15');
+    const ex = await import('/extract.js?v=16');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -877,7 +877,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=15');
+    const pc = await import('/pubchem.js?v=16');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -941,6 +941,158 @@ $('#pcQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') pcLookup($
 document.querySelectorAll('.chip.pcEx').forEach((b) => {
   b.onclick = () => { $('#pcQ').value = b.textContent; pcLookup(b.textContent); };
 });
+
+/* ═════════ فعالیت زیستی از ChEMBL ═════════ */
+document.querySelectorAll('#clTabs .tab').forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll('#clTabs .tab').forEach((x) => x.classList.toggle('on', x === t));
+    $('#cl-mol').hidden = t.dataset.cl !== 'mol';
+    $('#cl-tgt').hidden = t.dataset.cl !== 'tgt';
+  };
+});
+
+/** مقالهٔ مرجعِ یک اندازه‌گیری را وارد کتابخانه می‌کند. */
+function refButton(r) {
+  if (!r.doi && !r.refTitle) return null;
+  const b = el('button', 'btn ghost sm', 'افزودن مرجع به کتابخانه');
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = 'در حال افزودن…';
+    try {
+      await post('/api/papers', {
+        title: r.refTitle || ('مرجع ' + (r.doi || '')),
+        doi: r.doi || null, journal: r.journal || null, year: r.year || null,
+        source: 'chembl', tag: r.target || null,
+        summary: [r.assay, r.type && `${r.type} ${r.relation} ${r.value} ${r.units || ''}`.trim()]
+          .filter(Boolean).join(' — ') || null,
+      });
+      b.className = 'btn sm'; b.textContent = 'در کتابخانه ✓';
+      health();
+    } catch (e) { b.disabled = false; b.textContent = e.message; }
+  };
+  return b;
+}
+
+function actTable(rows, withMol) {
+  const wrap = el('div', 'tw');
+  const table = el('table');
+  const head = ['معیار', 'مقدار', 'pChEMBL'];
+  if (withMol) head.unshift('ترکیب'); else head.push('هدف');
+  head.push('مرجع', '');
+  const htr = el('tr');
+  head.forEach((h) => htr.appendChild(el('th', null, h)));
+  const thead = el('thead'); thead.appendChild(htr); table.appendChild(thead);
+
+  const tb = el('tbody');
+  rows.forEach((r) => {
+    const tr = el('tr');
+    if (withMol) {
+      const td = el('td');
+      if (r.mol) {
+        const a = el('a', null, r.mol.name || r.molecule);
+        a.href = r.mol.page; a.target = '_blank'; a.rel = 'noopener';
+        td.appendChild(a);
+        const im = document.createElement('img');
+        im.src = r.mol.image; im.className = 'molMini'; im.loading = 'lazy'; im.alt = '';
+        td.appendChild(im);
+      } else td.textContent = r.molecule;
+      tr.appendChild(td);
+    }
+    tr.appendChild(el('td', null, r.type || '—'));
+    tr.appendChild(el('td', 'n', r.value == null ? '—'
+      : `${r.relation === '=' ? '' : r.relation} ${fa(r.value)} ${r.units || ''}`.trim()));
+    tr.appendChild(el('td', 'n', r.pchembl == null ? '—' : fa(r.pchembl.toFixed(2))));
+    if (!withMol) tr.appendChild(el('td', null,
+      (r.target || '—') + (r.organism ? ' · ' + r.organism : '')));
+
+    const ref = el('td');
+    if (r.doi) {
+      const a = el('a', null, (r.journal || 'مرجع') + ' ' + (r.year ? fa(r.year) : ''));
+      a.href = 'https://doi.org/' + r.doi; a.target = '_blank'; a.rel = 'noopener';
+      ref.appendChild(a);
+    } else ref.textContent = r.journal ? r.journal + ' ' + fa(r.year || '') : '—';
+    tr.appendChild(ref);
+
+    const act = el('td');
+    const b = refButton(r);
+    if (b) act.appendChild(b);
+    tr.appendChild(act);
+    tb.appendChild(tr);
+  });
+  table.appendChild(tb);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+$('#clGo').onclick = async () => {
+  const st = $('#clState'), out = $('#clOut');
+  st.textContent = 'در حال خواندن از ChEMBL…';
+  out.innerHTML = '';
+  try {
+    const cl = await import('/chembl.js?v=16');
+    const mol = await cl.findMolecule($('#clQ').value);
+    const { total, rows } = await cl.activitiesOf(mol.id);
+
+    const card = el('div', 'card found');
+    const head = el('div', 'tags');
+    head.appendChild(el('span', 'tag id', mol.id));
+    if (mol.maxPhase === 4) head.appendChild(el('span', 'tag ok', 'داروی تأییدشده'));
+    else if (mol.maxPhase > 0) head.appendChild(el('span', 'tag nrf', 'فاز بالینی ' + fa(mol.maxPhase)));
+    if (mol.ro5 != null) head.appendChild(el('span', mol.ro5 <= 1 ? 'tag ok' : 'tag no',
+      mol.ro5 === 0 ? 'بدون نقض لیپینسکی' : fa(mol.ro5) + ' نقض لیپینسکی'));
+    card.appendChild(head);
+    card.appendChild(el('h3', null, mol.name || mol.id));
+
+    const split = el('div', 'molRow');
+    const im = document.createElement('img');
+    im.className = 'mol'; im.src = mol.image; im.alt = '';
+    split.appendChild(im);
+    const dl = el('dl', 'kv grow');
+    [['جرم مولکولی', mol.mw], ['logP', mol.logp], ['TPSA', mol.tpsa],
+     ['دهندهٔ H', mol.hbd], ['گیرندهٔ H', mol.hba]]
+      .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v == null ? '—' : fa(v))); });
+    split.appendChild(dl);
+    card.appendChild(split);
+    if (mol.smiles) card.appendChild(el('div', 'doi', mol.smiles));
+    out.appendChild(card);
+
+    if (rows.length) out.appendChild(actTable(rows, false));
+    st.textContent = fa(total) + ' اندازه‌گیری ثبت شده' +
+      (rows.length < total ? ` — ${fa(rows.length)} مورد قوی‌تر نشان داده شد` : '');
+  } catch (e) { st.textContent = e.message; }
+};
+$('#clQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#clGo').click(); });
+
+$('#clTGo').onclick = async () => {
+  const st = $('#clState'), out = $('#clOut'), picks = $('#clTargets');
+  st.textContent = 'در حال یافتن هدف…';
+  out.innerHTML = ''; picks.innerHTML = '';
+  try {
+    const cl = await import('/chembl.js?v=16');
+    const targets = await cl.findTargets($('#clT').value);
+    if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
+
+    const load = async (t) => {
+      st.textContent = 'خواندن داده‌های ' + t.name + '…';
+      out.innerHTML = '';
+      const { total, rows } = await cl.activitiesForTarget(t.id, { type: $('#clType').value });
+      out.appendChild(actTable(rows, true));
+      st.textContent = `${t.name} (${t.organism || '—'}) — ${fa(total)} اندازه‌گیریِ ${$('#clType').value}، قوی‌ترین‌ها اول`;
+    };
+
+    targets.forEach((t, i) => {
+      const b = el('button', 'chip sm', t.name + (t.organism ? ' · ' + t.organism : ''));
+      b.onclick = () => {
+        picks.querySelectorAll('.chip').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+        b.setAttribute('aria-pressed', 'true');
+        load(t).catch((e) => { st.textContent = e.message; });
+      };
+      if (i === 0) b.setAttribute('aria-pressed', 'true');
+      picks.appendChild(b);
+    });
+    await load(targets[0]);
+  } catch (e) { st.textContent = e.message; }
+};
+$('#clT').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#clTGo').click(); });
 
 /* ───── کتابخانه */
 let onlyNrf2 = false, onlyFiles = false, deepSearch = false;
