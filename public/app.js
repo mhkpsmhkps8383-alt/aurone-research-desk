@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=14';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=14';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=15';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=15';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -23,6 +23,7 @@ const post = (url, body) => api(url, {
 });
 
 let TEMPLATES = [];
+let FIGIDX = {};   // شمارهٔ تصویرهای ذخیره‌شدهٔ هر مقاله
 
 /* ───── مسیریابی */
 const VIEWS = ['add', 'discover', 'library', 'matrix', 'templates', 'chem'];
@@ -238,10 +239,17 @@ function renderQueue() {
         });
         c.appendChild(r3);
       }
+      if (it.figs?.length) c.appendChild(figureGallery(it));
       const bar = el('div', 'row');
       const one = el('button', 'btn sm', it.state === 'saved' ? 'ذخیرهٔ دوباره' : 'ذخیرهٔ همین یکی');
       one.onclick = () => saveOne(it);
       bar.appendChild(one);
+      if (/\.pdf$/i.test(it.file.name)) {
+        const fig = el('button', 'btn ghost sm',
+          it.figs ? 'ساختارها (' + fa(it.figs.length) + ')' : 'استخراج ساختارها');
+        fig.onclick = () => pullFigures(it, fig);
+        bar.appendChild(fig);
+      }
       if (it.rec.raw_text) {
         const longer = el('button', 'btn ghost sm', 'خلاصهٔ بلندتر');
         longer.onclick = () => {
@@ -284,6 +292,65 @@ async function uploadText(id, text, it) {
   renderQueue();
 }
 
+/* ───── ساختارهای داخل PDF */
+async function pullFigures(it, btn) {
+  btn.disabled = true;
+  try {
+    const { extractFigures } = await import('/figures.js?v=15');
+    const figs = await extractFigures(await it.file.arrayBuffer(), {
+      onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
+    });
+    it.figs = figs.map((f, i) => ({ ...f, pick: true, i }));
+    it.figState = figs.length
+      ? fa(figs.length) + ' تصویر پیدا شد — آنهایی که ساختارند را نگه دارید'
+      : 'تصویری پیدا نشد (شاید ساختارها به‌صورت خط رسم شده‌اند، نه عکس)';
+  } catch (e) { it.figState = e.message; }
+  renderQueue();
+}
+
+function figureGallery(it) {
+  const box = el('div');
+  box.appendChild(el('div', 'hint', it.figState || ''));
+  const grid = el('div', 'figGrid');
+  it.figs.forEach((f) => {
+    const cell = el('label', 'figCell' + (f.pick ? ' on' : ''));
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = f.pick;
+    cb.onchange = () => { f.pick = cb.checked; cell.classList.toggle('on', cb.checked); };
+    cell.appendChild(cb);
+    const im = document.createElement('img');
+    im.src = f.canvas.toDataURL('image/png');
+    im.alt = 'تصویر صفحهٔ ' + f.page;
+    cell.appendChild(im);
+    cell.appendChild(el('span', null, 'ص' + fa(f.page) + ' · ' + fa(f.width) + '×' + fa(f.height)));
+    grid.appendChild(cell);
+  });
+  box.appendChild(grid);
+  return box;
+}
+
+/** تصویرهای انتخاب‌شده را فشرده و یکی‌یکی بالا می‌فرستد. */
+async function uploadFigures(id, it) {
+  const picks = (it.figs || []).filter((f) => f.pick);
+  if (!picks.length) return;
+  const { toCompact } = await import('/figures.js?v=15');
+  let done = 0;
+  for (const f of picks) {
+    try {
+      const { blob, width, height } = await toCompact(f.canvas);
+      const p = new URLSearchParams({ idx: String(f.i), page: String(f.page), w: String(width), h: String(height) });
+      const r = await fetch('/api/papers/' + id + '/figures?' + p, {
+        method: 'POST', headers: { 'content-type': blob.type }, body: blob,
+      });
+      if (r.ok) done++;
+    } catch { /* یکی نشد، بقیه ادامه */ }
+    it.figState = 'ذخیرهٔ ساختارها: ' + fa(done) + ' از ' + fa(picks.length);
+    renderQueue();
+  }
+  it.figState = fa(done) + ' ساختار در مقاله ذخیره شد';
+  renderQueue();
+}
+
 async function saveOne(it) {
   const st = $('#qState');
   try {
@@ -298,7 +365,8 @@ async function saveOne(it) {
     it.savedId = saved.id;
     renderQueue();
     health();
-    uploadText(saved.id, raw_text, it);   // در پس‌زمینه؛ منتظرش نمی‌مانیم
+    uploadText(saved.id, raw_text, it);       // در پس‌زمینه؛ منتظرشان نمی‌مانیم
+    uploadFigures(saved.id, it);
     return true;
   } catch (e) { it.state = 'err'; it.error = e.message; renderQueue(); return false; }
 }
@@ -313,7 +381,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=14');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=15');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -529,7 +597,7 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=14');
+    const { searchAll } = await import('/sources.js?v=15');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
       use: [...pickedSources],
@@ -692,7 +760,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=14');
+    const ex = await import('/extract.js?v=15');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -809,7 +877,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=14');
+    const pc = await import('/pubchem.js?v=15');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -903,7 +971,10 @@ async function loadLibrary() {
     if (onlyNrf2) p.set('nrf2', '1');
     if (onlyFiles) p.set('files', '1');
     if (deepSearch && $('#qLib').value.trim()) p.set('deep', '1');
-    const rows = await api('/api/papers?' + p);
+    const [rows] = await Promise.all([
+      api('/api/papers?' + p),
+      api('/api/figure-index').then((m) => { FIGIDX = m; }).catch(() => {}),
+    ]);
     $('#libCount').textContent = fa(rows.length) + ' مقاله';
     const w = $('#libList'); w.innerHTML = '';
     if (!rows.length) { w.appendChild(el('div', 'note', 'چیزی پیدا نشد.')); return; }
@@ -965,6 +1036,22 @@ function paperCard(r) {
     f.forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, String(v))); });
     c.appendChild(dl);
   }
+  const figIdx = FIGIDX[r.id] || [];
+  if (figIdx.length) {
+    const grid = el('div', 'figGrid saved');
+    for (const i of figIdx.slice(0, 24)) {
+      const a = el('a', 'figCell on');
+      a.href = '/api/papers/' + r.id + '/figures/' + i;
+      a.target = '_blank'; a.rel = 'noopener';
+      const im = document.createElement('img');
+      im.src = a.href; im.loading = 'lazy'; im.alt = 'ساختار';
+      im.onerror = () => a.remove();
+      a.appendChild(im);
+      grid.appendChild(a);
+    }
+    c.appendChild(grid);
+  }
+
   const row = el('div', 'row');
   if (r.filename || r.source === 'file') {
     const sm = el('button', 'btn ghost sm', r.summary ? 'خلاصهٔ تازه بساز' : 'خلاصه بساز');

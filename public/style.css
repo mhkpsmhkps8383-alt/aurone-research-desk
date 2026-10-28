@@ -266,3 +266,17 @@ footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
 .simCell:hover{border-color:var(--cyan)}
 .simCell img{width:92px;height:92px;border-radius:8px;background:#fff}
 @media (max-width:520px){.mol{width:150px;height:150px}}
+
+/* ───── گالری ساختارهای استخراج‌شده */
+.figGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));
+  gap:10px;margin-top:12px}
+.figCell{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:7px;border-radius:12px;border:1px solid var(--edge);cursor:pointer;
+  background:rgba(255,255,255,.02);font-size:11px;color:var(--ink-3);
+  text-decoration:none;transition:.15s}
+.figCell:hover{border-color:var(--cyan)}
+.figCell.on{border-color:rgba(157,255,60,.55);background:rgba(157,255,60,.06)}
+.figCell img{width:100%;height:112px;object-fit:contain;border-radius:8px;background:#fff}
+.figCell input{position:absolute;inset-inline-end:10px;inset-block-start:10px;
+  width:17px;height:17px;accent-color:var(--lime);cursor:pointer;z-index:2}
+.figGrid.saved .figCell{cursor:zoom-in}

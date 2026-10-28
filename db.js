@@ -99,6 +99,15 @@ export async function ensureSchema() {
     ['pmid', 'text'], ['pmcid', 'text'], ['openalex_id', 'text'],
     ['enriched_at', 'timestamptz'], ['flags', 'jsonb'],
   ]) await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+  // تصویرهای بیرون‌کشیده‌شده از PDF مقاله (ساختارها و نمودارها)
+  await q(`CREATE TABLE IF NOT EXISTS figures (
+     id bigserial PRIMARY KEY,
+     paper_id bigint NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+     idx int NOT NULL, page int, width int, height int,
+     mime text NOT NULL, caption text, data bytea NOT NULL,
+     created_at timestamptz NOT NULL DEFAULT now(),
+     UNIQUE (paper_id, idx))`);
+  await q(`CREATE INDEX IF NOT EXISTS figures_paper_idx ON figures (paper_id)`);
   await q(`CREATE TABLE IF NOT EXISTS watches (
      id bigserial PRIMARY KEY, label text NOT NULL, query text NOT NULL,
      seen_ids jsonb NOT NULL DEFAULT '[]'::jsonb, last_checked timestamptz,

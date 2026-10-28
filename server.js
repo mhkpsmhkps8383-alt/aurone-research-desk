@@ -129,6 +129,56 @@ app.post('/api/papers/:id/text',
     res.json({ ok: true, chars: clipped.length, received: req.body.length });
   });
 
+// ───────── تصویرهای مقاله (ساختارها)
+app.post('/api/papers/:id/figures',
+  express.raw({ type: ['image/*', 'application/octet-stream'], limit: '4mb' }),
+  async (req, res) => {
+    if (!req.body?.length) return res.status(400).json({ error: 'تصویری دریافت نشد' });
+    const idx = Number(req.query.idx);
+    if (!Number.isInteger(idx)) return res.status(400).json({ error: 'شمارهٔ تصویر لازم است' });
+    await q(
+      `INSERT INTO figures (paper_id, idx, page, width, height, mime, caption, data)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (paper_id, idx) DO UPDATE SET
+         page=EXCLUDED.page, width=EXCLUDED.width, height=EXCLUDED.height,
+         mime=EXCLUDED.mime, caption=EXCLUDED.caption, data=EXCLUDED.data`,
+      [req.params.id, idx, Number(req.query.page) || null,
+       Number(req.query.w) || null, Number(req.query.h) || null,
+       req.get('content-type') || 'image/webp',
+       (req.query.caption || '').slice(0, 200) || null, req.body]);
+    res.json({ ok: true, idx, bytes: req.body.length });
+  });
+
+app.get('/api/papers/:id/figures', async (req, res) => {
+  const { rows } = await q(
+    `SELECT idx, page, width, height, mime, caption, octet_length(data) AS bytes
+     FROM figures WHERE paper_id=$1 ORDER BY idx`, [req.params.id]);
+  res.json(rows);
+});
+
+app.get('/api/papers/:id/figures/:idx', async (req, res) => {
+  const { rows } = await q(
+    'SELECT mime, data FROM figures WHERE paper_id=$1 AND idx=$2',
+    [req.params.id, req.params.idx]);
+  if (!rows.length) return res.status(404).json({ error: 'پیدا نشد' });
+  res.setHeader('content-type', rows[0].mime);
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.send(rows[0].data);
+});
+
+app.delete('/api/papers/:id/figures/:idx', async (req, res) => {
+  await q('DELETE FROM figures WHERE paper_id=$1 AND idx=$2', [req.params.id, req.params.idx]);
+  res.json({ ok: true });
+});
+
+// فهرست شمارهٔ تصویرهای هر مقاله — شماره‌ها پیوسته نیستند، چون فقط
+// تصویرهای انتخاب‌شده ذخیره می‌شوند
+app.get('/api/figure-index', async (_req, res) => {
+  const { rows } = await q(
+    'SELECT paper_id, array_agg(idx ORDER BY idx) AS idxs FROM figures GROUP BY paper_id');
+  res.json(Object.fromEntries(rows.map((r) => [r.paper_id, r.idxs])));
+});
+
 app.get('/api/papers/:id/text', async (req, res) => {
   const { rows } = await q('SELECT title,filename,raw_text FROM papers WHERE id=$1', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'پیدا نشد' });
