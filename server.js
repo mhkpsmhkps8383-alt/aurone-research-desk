@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
@@ -7,6 +8,9 @@ import { enrichDoi, searchPapers } from './scholar.js';
 import { toBibtex, toRis } from './cite.js';
 
 const app = express();
+// فشرده‌سازی پاسخ‌ها: فهرست مقالات با چکیده‌ها صدها کیلوبایت می‌شود و روی
+// شبکهٔ کند ده‌ها ثانیه طول می‌کشید. متن JSON حدود ده برابر کوچک می‌شود.
+app.use(compression({ threshold: 1024 }));
 const __dirname = dirname(fileURLToPath(import.meta.url));
 app.use(express.json({ limit: '2mb' }));
 // با ETag اعتبارسنجی می‌شود؛ بدون کش کردنِ کور، تا به‌روزرسانی‌ها بی‌درنگ دیده شوند

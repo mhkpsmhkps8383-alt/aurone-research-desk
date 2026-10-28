@@ -1,16 +1,19 @@
 {
   "name": "aurone-research-desk",
   "version": "1.0.0",
-  "description": "دستیار پژوهشی اورون — تحلیل خودکار مقاله، کتابخانهٔ ماندگار و پرسش از کل منابع",
+  "description": "دستیار پژوهشی — کتابخانهٔ مقالات، جست‌وجوی چندپایگاهی و جدول شواهد",
   "type": "module",
   "main": "server.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "seed": "node seed.js"
   },
   "dependencies": {
     "express": "4.21.2",
-    "pg": "8.13.1"
+    "pg": "8.13.1",
+    "compression": "1.7.5"
   }
 }
