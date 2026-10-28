@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=23">
+<link rel="stylesheet" href="/style.css?v=24">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -44,6 +44,7 @@
       <a href="#discover" data-v="discover">کشف مقاله <span class="badge" id="newBadge" hidden></span></a>
       <a href="#library" data-v="library">کتابخانه</a>
       <a href="#infiles" data-v="infiles">جست‌وجو در کتابخانه</a>
+      <a href="#translate" data-v="translate">ترجمه</a>
       <a href="#matrix" data-v="matrix">جدول شواهد</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
       <a href="#chem" data-v="chem">ترکیبات</a>
@@ -281,6 +282,19 @@
     <div class="bar" id="enrichBar" hidden><span></span></div>
   </div>
 
+  <div class="panel glow" id="textPanel" style="margin-top:14px">
+    <div class="row">
+      <div class="grow">
+        <b>دریافت متن کاملِ مقالات دسترسی‌آزاد</b>
+        <div class="hint" id="textHint">…</div>
+      </div>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="textGo">شروع</button>
+      </div>
+    </div>
+    <div class="bar" id="textBar" hidden><span></span></div>
+  </div>
+
   <div id="libList" class="stack"></div>
 </section>
 
@@ -308,6 +322,28 @@
   </div>
 
   <div id="ifOut" class="stack"></div>
+</section>
+
+<!-- ═══ ترجمه ═══ -->
+<section id="v-translate" hidden>
+  <h1 class="neon">ترجمهٔ مقاله</h1>
+  <p class="lede">مقاله‌ای از کتابخانه‌تان را با عنوان یا DOI انتخاب کنید، بعد بگویید کدام بخش را می‌خواهید — چکیده، مقدمه، نتایج یا هر تیتر دیگری — و همان بخش فارسی می‌شود. متن اصلی کنارش می‌ماند تا بتوانید بسنجید.</p>
+
+  <div class="panel glow">
+    <div class="row">
+      <label class="fld grow">عنوان یا DOI مقاله
+        <input id="trQ" type="search" placeholder="بخشی از عنوان، یا 10.1016/…">
+      </label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="trFind">پیدایش کن</button>
+      </div>
+    </div>
+    <div id="trPicks" class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"></div>
+    <span class="hint" id="trState"></span>
+  </div>
+
+  <div id="trPaper"></div>
+  <div id="trOut" class="stack"></div>
 </section>
 
 <!-- ═══ جدول شواهد ═══ -->
@@ -464,7 +500,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=23"></script>
+<script type="module" src="/app.js?v=24"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

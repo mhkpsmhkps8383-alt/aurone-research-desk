@@ -161,7 +161,7 @@ app.get('/api/search-text', async (req, res) => {
   const papers = [];
   let totalHits = 0, withText = 0;
   for (const r of rows) {
-    if (r.raw_text) withText++;
+    if (r.raw_text && r.raw_text.length > 100) withText++;
     const byTerm = groups.map((g) => {
       // هر کدام از مترادف‌ها که پیدا شد، همان کافی است
       for (const variant of g) {
@@ -181,7 +181,7 @@ app.get('/api/search-text', async (req, res) => {
           }
         }
         // متن کامل فایل، با شمارهٔ صفحه
-        if (r.raw_text) {
+        if (r.raw_text && r.raw_text.length > 100) {
           for (const h of hitsIn(r.raw_text, variant, r.pages, perPaper)) {
             hits.push({ ...h, where: 'متن کامل' });
           }
@@ -196,7 +196,7 @@ app.get('/api/search-text', async (req, res) => {
     totalHits += n;
     papers.push({
       id: r.id, title: r.title, filename: r.filename, pages: r.pages,
-      source: r.source, hasText: Boolean(r.raw_text), count: n, terms: byTerm,
+      source: r.source, hasText: Boolean(r.raw_text && r.raw_text.length > 100), count: n, terms: byTerm,
     });
   }
   // مقاله‌ای که متن کاملش را داریم شواهد بیشتری دارد، پس بالاتر می‌نشیند
@@ -252,6 +252,69 @@ app.get('/api/figure-index', async (_req, res) => {
   const { rows } = await q(
     'SELECT paper_id, array_agg(idx ORDER BY idx) AS idxs FROM figures GROUP BY paper_id');
   res.json(Object.fromEntries(rows.map((r) => [r.paper_id, r.idxs])));
+});
+
+/**
+ * متن کاملِ مقالات دسترسی‌آزاد را از Europe PMC می‌گیرد و ذخیره می‌کند.
+ * بدون این، جست‌وجو در متن کامل فقط روی فایل‌های آپلودیِ کاربر کار می‌کند.
+ * فقط مقالاتی که PMCID دارند متن کامل آزاد دارند.
+ */
+async function fetchFullText(pmcid) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(
+      `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextXML`,
+      { signal: ctl.signal, headers: { 'User-Agent': 'AuroneResearchDesk/1.0' } });
+    if (!r.ok) return null;
+    const xml = await r.text();
+    if (!xml || xml.length < 400 || xml.trim().startsWith('{')) return null;
+    // بخش‌ها را با \f جدا می‌کنیم تا مثل فایل‌ها جای عبارت معلوم باشد
+    const body = xml
+      .replace(/<\/sec>/g, '\f')
+      .replace(/<title[^>]*>/g, '\n')
+      .replace(/<\/title>/g, '\n')
+      .replace(/<\/(p|abstract|caption)>/g, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+      .replace(/&#x?[0-9a-f]+;/gi, ' ')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return body.length > 600 ? body.slice(0, 200000) : null;
+  } catch { return null; }
+  finally { clearTimeout(t); }
+}
+
+app.post('/api/fetch-texts', async (req, res) => {
+  const limit = Math.max(1, Math.min(8, Number(req.body?.limit) || 4));
+  const { rows } = await q(
+    `SELECT id, pmcid FROM papers
+     WHERE raw_text IS NULL AND pmcid IS NOT NULL AND pmcid <> '' ORDER BY id LIMIT $1`, [limit]);
+  const done = [];
+  for (const r of rows) {
+    const text = await fetchFullText(r.pmcid);
+    if (text) {
+      await q('UPDATE papers SET raw_text=$2, pages=NULL, updated_at=now() WHERE id=$1', [r.id, text]);
+      done.push({ id: r.id, chars: text.length, ok: true });
+    } else {
+      // دیگر دوباره تلاش نکنیم: علامت می‌زنیم که متنش در دسترس نیست
+      await q("UPDATE papers SET raw_text='' WHERE id=$1", [r.id]);
+      done.push({ id: r.id, ok: false });
+    }
+  }
+  const left = await q(
+    `SELECT count(*)::int AS n FROM papers
+     WHERE raw_text IS NULL AND pmcid IS NOT NULL AND pmcid <> ''`);
+  res.json({ done, remaining: left.rows[0].n });
+});
+
+app.get('/api/text-status', async (_req, res) => {
+  const { rows } = await q(`SELECT
+     count(*) FILTER (WHERE raw_text IS NOT NULL AND length(raw_text) > 100)::int AS have,
+     count(*) FILTER (WHERE raw_text IS NULL AND pmcid IS NOT NULL AND pmcid <> '')::int AS fetchable,
+     count(*)::int AS total FROM papers`);
+  res.json(rows[0]);
 });
 
 app.get('/api/papers/:id/text', async (req, res) => {

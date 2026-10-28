@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=23';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=23';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=24';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=24';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -46,7 +46,7 @@ function wireTermPreview(inputSel, noteSel) {
 let FIGIDX = {};   // شمارهٔ تصویرهای ذخیره‌شدهٔ هر مقاله
 
 /* ───── مسیریابی */
-const VIEWS = ['add', 'discover', 'library', 'infiles', 'matrix', 'templates', 'chem'];
+const VIEWS = ['add', 'discover', 'library', 'infiles', 'translate', 'matrix', 'templates', 'chem'];
 function route() {
   let v = (location.hash || '#add').slice(1);
   if (!VIEWS.includes(v)) v = 'add';
@@ -55,7 +55,7 @@ function route() {
     a.toggleAttribute('aria-current', a.dataset.v === v);
     if (a.dataset.v === v) a.setAttribute('aria-current', 'page');
   });
-  if (v === 'library') { loadLibrary(); enrichStatus(); }
+  if (v === 'library') { loadLibrary(); enrichStatus(); textStatus(); }
   if (v === 'discover') loadWatches();
   if (v === 'matrix') fillMatrixTemplates();
   if (v === 'templates') renderTemplates();
@@ -317,7 +317,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=23');
+    const { extractFigures } = await import('/figures.js?v=24');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -354,7 +354,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=23');
+  const { toCompact } = await import('/figures.js?v=24');
   let done = 0;
   for (const f of picks) {
     try {
@@ -402,7 +402,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=23');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=24');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -498,7 +498,7 @@ $('#impIn').onchange = async (e) => {
   IMPORTED = [];
   const kinds = [];
   try {
-    const imp = await import('/import.js?v=23');
+    const imp = await import('/import.js?v=24');
     for (const f of files) {
       try {
         const { kind, records } = await imp.parseFile(f);
@@ -724,14 +724,14 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=23');
+    const { searchAll } = await import('/sources.js?v=24');
 
     // در حالت دقیق، نام ترکیب را اول به مترادف‌هایش گسترش می‌دهیم: مقالات
     // معمولاً نام رایج را می‌نویسند، نه املایی که کاربر تایپ کرده
     let names = [qv], chem = null;
     if (exactOnly) {
       $('#sState').textContent = 'بررسی نام ترکیب در PubChem…';
-      const { expandChemicalName } = await import('/phrase.js?v=23');
+      const { expandChemicalName } = await import('/phrase.js?v=24');
       chem = await expandChemicalName(qv);
       names = chem.names;
     }
@@ -749,7 +749,7 @@ async function runSearch(reset = true) {
     // واژه‌های الزامی: مقاله‌ای که همهٔ آنها را نداشته باشد کنار می‌رود
     const andTerms = splitTerms($('#sAnd').value);
     if (andTerms.length) {
-      const { keepOnlyExact } = await import('/phrase.js?v=23');
+      const { keepOnlyExact } = await import('/phrase.js?v=24');
       let pool = rows, missing = 0;
       for (const term of andTerms) {
         $('#sState').textContent = 'بررسی واژهٔ «' + term + '» در ' + fa(pool.length) + ' نتیجه…';
@@ -771,7 +771,7 @@ async function runSearch(reset = true) {
     }
     if (exactOnly) {
       // پایگاه‌ها عبارت را می‌شکنند، پس درستی را خودمان می‌سنجیم
-      const { keepOnlyExact } = await import('/phrase.js?v=23');
+      const { keepOnlyExact } = await import('/phrase.js?v=24');
       $('#sState').textContent = 'بررسی عبارت دقیق در ' + fa(rows.length) + ' نتیجه…';
       const res = await keepOnlyExact(rows, names, {
         fullText: readFullText,
@@ -923,6 +923,39 @@ async function enrichStatus() {
   } catch { /* بی‌خیال */ }
 }
 
+/* ───── آوردن متن کامل مقالات رایگان، تا جست‌وجو در متن معنا پیدا کند */
+async function textStatus() {
+  try {
+    const s2 = await api('/api/text-status');
+    $('#textHint').textContent = s2.fetchable > 0
+      ? fa(s2.have) + ' مقاله متن کامل دارد. ' + fa(s2.fetchable) +
+        ' مقالهٔ دیگر در PMC آزاد است و متنشان را می‌شود آورد — بعدش جست‌وجو داخل خودِ متن کار می‌کند.'
+      : fa(s2.have) + ' مقاله متن کامل دارد. بقیه یا آزاد نیستند یا در PMC نیستند؛ ' +
+        'برای آنها می‌توانید PDF را خودتان آپلود کنید.';
+    $('#textGo').disabled = s2.fetchable === 0;
+  } catch { /* بی‌خیال */ }
+}
+
+$('#textGo').onclick = async () => {
+  const btn = $('#textGo'), bar = $('#textBar'), hint = $('#textHint');
+  btn.disabled = true; bar.hidden = false;
+  let got = 0, total = 0;
+  try {
+    total = (await api('/api/text-status')).fetchable || 1;
+    for (let guard = 0; guard < 40; guard++) {
+      const j = await post('/api/fetch-texts', { limit: 4 });
+      got += j.done.filter((d) => d.ok).length;
+      const pct = Math.round(100 * (total - j.remaining) / total);
+      bar.firstElementChild.style.width = Math.min(100, Math.max(4, pct)) + '%';
+      hint.textContent = 'متن ' + fa(got) + ' مقاله آورده شد… (' + fa(j.remaining) + ' مانده)';
+      if (!j.remaining || !j.done.length) break;
+    }
+    hint.textContent = 'متن کامل ' + fa(got) + ' مقاله ذخیره شد.';
+  } catch (e) { hint.textContent = e.message; }
+  bar.hidden = true;
+  textStatus();
+};
+
 $('#enrichGo').onclick = async () => {
   const btn = $('#enrichGo'), bar = $('#enrichBar'), hint = $('#enrichHint');
   btn.disabled = true; bar.hidden = false;
@@ -945,6 +978,153 @@ $('#enrichGo').onclick = async () => {
   enrichStatus();
 };
 
+/** از هر جای برنامه: برو به کتابخانه و همین مقاله را نشان بده. */
+function showInLibrary(p) {
+  location.hash = '#library';
+  $('#qLib').value = p.doi || (p.title || '').slice(0, 60);
+  $('#qLib').dispatchEvent(new Event('input', { bubbles: true }));
+  setTimeout(() => {
+    const card = [...document.querySelectorAll('#libList .card')]
+      .find((c) => c.querySelector('.tag.id')?.textContent === '#' + fa(p.id))
+      || document.querySelector('#libList .card');
+    if (card) {
+      card.classList.add('flash');
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setTimeout(() => card.classList.remove('flash'), 2600);
+    }
+  }, 700);
+}
+
+/* ═════════ ترجمهٔ مقاله ═════════ */
+let TR = { paper: null, sections: [], engine: 'auto' };
+
+/** از هر جای برنامه می‌شود گفت «این مقاله را ترجمه کن». */
+async function openTranslator(paper) {
+  location.hash = '#translate';
+  $('#trQ').value = paper.title || paper.doi || '';
+  await loadForTranslation(paper);
+}
+
+$('#trFind').onclick = async () => {
+  const st = $('#trState'), picks = $('#trPicks');
+  const qv = $('#trQ').value.trim();
+  if (qv.length < 3) { st.textContent = 'بخشی از عنوان یا DOI را بنویسید'; return; }
+  st.textContent = 'در حال گشتن در کتابخانه…';
+  picks.innerHTML = ''; $('#trPaper').innerHTML = ''; $('#trOut').innerHTML = '';
+  try {
+    const rows = await api('/api/papers?search=' + encodeURIComponent(qv));
+    if (!rows.length) { st.textContent = 'در کتابخانه پیدا نشد'; return; }
+    if (rows.length === 1) { await loadForTranslation(rows[0]); return; }
+    st.textContent = fa(rows.length) + ' مقاله پیدا شد — کدام؟';
+    rows.slice(0, 12).forEach((r) => {
+      const b = el('button', 'chip sm', (r.title || r.doi || '').slice(0, 70));
+      b.onclick = () => loadForTranslation(r);
+      picks.appendChild(b);
+    });
+  } catch (e) { st.textContent = e.message; }
+};
+$('#trQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#trFind').click(); });
+
+async function loadForTranslation(paper) {
+  const st = $('#trState'), head = $('#trPaper'), out = $('#trOut');
+  $('#trPicks').innerHTML = '';
+  out.innerHTML = '';
+  st.textContent = 'در حال خواندن متن مقاله…';
+  try {
+    const { sections } = await import('/translate.js?v=24');
+    let full = '';
+    try { full = (await api('/api/papers/' + paper.id + '/text')).raw_text || ''; } catch { /* ندارد */ }
+    TR.paper = paper;
+    TR.sections = full.length > 200 ? sections(full) : [];
+
+    head.innerHTML = '';
+    const c = el('div', 'card found');
+    const tags = el('div', 'tags');
+    tags.appendChild(el('span', 'tag id', '#' + fa(paper.id)));
+    tags.appendChild(el('span', full.length > 200 ? 'tag ok' : 'tag no',
+      full.length > 200 ? 'متن کامل دارد' : 'متن کامل ندارد'));
+    c.appendChild(tags);
+    c.appendChild(el('h3', null, paper.title));
+    if (paper.doi) c.appendChild(el('div', 'doi', paper.doi));
+
+    const bar = el('div', 'row');
+    const engines = await (await import('/translate.js?v=24')).availableEngines();
+    const sel = document.createElement('select');
+    engines.forEach((en) => {
+      const o = el('option', null, en.label + ' — ' + en.note);
+      o.value = en.key; sel.appendChild(o);
+    });
+    sel.onchange = () => { TR.engine = sel.value; };
+    TR.engine = engines[0]?.key || 'mymemory';
+    const lab = el('label', 'fld grow', 'موتور ترجمه');
+    lab.appendChild(sel);
+    bar.appendChild(lab);
+    c.appendChild(bar);
+    head.appendChild(c);
+
+    // چکیده همیشه هست، حتی وقتی متن کامل نداریم
+    const blocks = [];
+    if (paper.abstract) blocks.push({ i: -2, title: 'چکیده', text: paper.abstract });
+    if (paper.summary && paper.summary !== paper.abstract)
+      blocks.push({ i: -1, title: 'خلاصه', text: paper.summary });
+    blocks.push(...TR.sections);
+
+    if (!blocks.length) {
+      st.textContent = 'این مقاله نه متن کامل دارد نه چکیده. فایلش را از «افزودن مقاله» بدهید.';
+      return;
+    }
+    st.textContent = fa(blocks.length) + ' بخش آمادهٔ ترجمه — روی هرکدام بزنید';
+    blocks.forEach((b) => out.appendChild(sectionCard(b)));
+  } catch (e) { st.textContent = e.message; }
+}
+
+function sectionCard(block) {
+  const c = el('div', 'card');
+  const head = el('div', 'tags');
+  head.appendChild(el('span', 'tag id', block.title));
+  head.appendChild(el('span', 'tag', fa(block.text.length) + ' نویسه'));
+  c.appendChild(head);
+
+  const orig = el('details');
+  orig.appendChild(el('summary', null, 'متن اصلی'));
+  orig.appendChild(el('div', 'body ltr', block.text));
+  c.appendChild(orig);
+
+  const row = el('div', 'row');
+  const go = el('button', 'btn primary sm', 'ترجمه کن');
+  const note = el('span', 'hint');
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const { translate } = await import('/translate.js?v=24');
+      const res = await translate(block.text, {
+        engine: TR.engine,
+        onProgress: (done, total, msg) => {
+          note.textContent = msg || (total ? fa(done) + ' از ' + fa(total) : '');
+        },
+      });
+      note.textContent = 'با ' + res.engine;
+      const fa_ = el('div', 'persianOut');
+      fa_.appendChild(el('span', 'hint', 'ترجمهٔ فارسی — پیش‌نویس ماشینی، اصطلاحات تخصصی را بازبینی کنید'));
+      fa_.appendChild(el('div', 'body', res.text));
+      const copy = el('button', 'btn ghost sm', 'رونوشت');
+      copy.onclick = () => {
+        navigator.clipboard?.writeText(res.text).then(
+          () => { copy.textContent = 'رونوشت شد ✓'; },
+          () => { copy.textContent = 'نشد'; });
+      };
+      fa_.appendChild(copy);
+      c.appendChild(fa_);
+      go.textContent = 'دوباره ترجمه کن';
+      go.disabled = false;
+    } catch (e) { note.textContent = e.message; go.disabled = false; }
+  };
+  row.appendChild(go);
+  row.appendChild(note);
+  c.appendChild(row);
+  return c;
+}
+
 /* ═════════ جست‌وجو در متن فایل‌های کتابخانه ═════════ */
 async function searchInFiles() {
   const st = $('#ifState'), out = $('#ifOut');
@@ -956,7 +1136,7 @@ async function searchInFiles() {
   out.innerHTML = '';
   try {
     // نام ترکیب را به مترادف‌هایش گسترش می‌دهیم: فایل ممکن است املای دیگری داشته باشد
-    const { expandChemicalName } = await import('/phrase.js?v=23');
+    const { expandChemicalName } = await import('/phrase.js?v=24');
     const groups = [];
     let synNote = '';
     for (const t of terms) {
@@ -991,6 +1171,21 @@ async function searchInFiles() {
       c.appendChild(head);
       c.appendChild(el('h3', null, p.title));
 
+      const nav = el('div', 'row');
+      const open = el('button', 'btn ghost sm', 'باز کردن در کتابخانه');
+      open.onclick = () => showInLibrary(p);
+      nav.appendChild(open);
+      const tr = el('button', 'btn ghost sm', 'ترجمه‌اش کن');
+      tr.onclick = async () => {
+        try {
+          const rows = await api('/api/papers?search=' + encodeURIComponent(p.title.slice(0, 60)));
+          const full = rows.find((x) => String(x.id) === String(p.id)) || rows[0];
+          if (full) openTranslator(full);
+        } catch (e) { nav.appendChild(el('span', 'hint', e.message)); }
+      };
+      nav.appendChild(tr);
+      c.appendChild(nav);
+
       p.terms.forEach((t) => {
         if (terms.length > 1 || t.matched !== t.term) {
           c.appendChild(el('div', 'hint', '«' + (t.matched || t.term) + '» — ' + fa(t.hits.length) + ' بار'));
@@ -1023,7 +1218,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=23');
+    const ex = await import('/extract.js?v=24');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -1140,7 +1335,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=23');
+    const pc = await import('/pubchem.js?v=24');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1291,7 +1486,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=23');
+    const cl = await import('/chembl.js?v=24');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1330,7 +1525,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=23');
+    const cl = await import('/chembl.js?v=24');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 
@@ -1503,6 +1698,9 @@ function paperCard(r) {
     };
     row.appendChild(en);
   }
+  const trb = el('button', 'btn ghost sm', 'ترجمه');
+  trb.onclick = () => openTranslator(r);
+  row.appendChild(trb);
   const del = el('button', 'btn danger sm', 'حذف');
   let armed = false;
   del.onclick = async () => {
