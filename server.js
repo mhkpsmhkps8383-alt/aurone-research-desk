@@ -17,6 +17,12 @@ app.use(express.static(join(__dirname, 'public'), {
 
 
 
+// پاسخ‌های API هیچ‌وقت کش نشوند، وگرنه بعد از تغییر، نسخهٔ قدیمی دیده می‌شود
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, must-revalidate');
+  next();
+});
+
 // ───────── وضعیت
 app.get('/api/health', async (_req, res) => {
   const n = await q('SELECT count(*)::int AS n FROM papers');
