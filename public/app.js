@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=24';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=24';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=25';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=25';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -46,7 +46,7 @@ function wireTermPreview(inputSel, noteSel) {
 let FIGIDX = {};   // شمارهٔ تصویرهای ذخیره‌شدهٔ هر مقاله
 
 /* ───── مسیریابی */
-const VIEWS = ['add', 'discover', 'library', 'infiles', 'translate', 'matrix', 'templates', 'chem'];
+const VIEWS = ['add', 'discover', 'library', 'infiles', 'draw', 'translate', 'matrix', 'templates', 'chem'];
 function route() {
   let v = (location.hash || '#add').slice(1);
   if (!VIEWS.includes(v)) v = 'add';
@@ -58,6 +58,7 @@ function route() {
   if (v === 'library') { loadLibrary(); enrichStatus(); textStatus(); }
   if (v === 'discover') loadWatches();
   if (v === 'matrix') fillMatrixTemplates();
+  if (v === 'draw') bootSketcher();
   if (v === 'templates') renderTemplates();
   if (v === 'chem') loadChem();
 }
@@ -317,7 +318,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=24');
+    const { extractFigures } = await import('/figures.js?v=25');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -354,7 +355,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=24');
+  const { toCompact } = await import('/figures.js?v=25');
   let done = 0;
   for (const f of picks) {
     try {
@@ -402,7 +403,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=24');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=25');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -498,7 +499,7 @@ $('#impIn').onchange = async (e) => {
   IMPORTED = [];
   const kinds = [];
   try {
-    const imp = await import('/import.js?v=24');
+    const imp = await import('/import.js?v=25');
     for (const f of files) {
       try {
         const { kind, records } = await imp.parseFile(f);
@@ -724,14 +725,14 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=24');
+    const { searchAll } = await import('/sources.js?v=25');
 
     // در حالت دقیق، نام ترکیب را اول به مترادف‌هایش گسترش می‌دهیم: مقالات
     // معمولاً نام رایج را می‌نویسند، نه املایی که کاربر تایپ کرده
     let names = [qv], chem = null;
     if (exactOnly) {
       $('#sState').textContent = 'بررسی نام ترکیب در PubChem…';
-      const { expandChemicalName } = await import('/phrase.js?v=24');
+      const { expandChemicalName } = await import('/phrase.js?v=25');
       chem = await expandChemicalName(qv);
       names = chem.names;
     }
@@ -749,7 +750,7 @@ async function runSearch(reset = true) {
     // واژه‌های الزامی: مقاله‌ای که همهٔ آنها را نداشته باشد کنار می‌رود
     const andTerms = splitTerms($('#sAnd').value);
     if (andTerms.length) {
-      const { keepOnlyExact } = await import('/phrase.js?v=24');
+      const { keepOnlyExact } = await import('/phrase.js?v=25');
       let pool = rows, missing = 0;
       for (const term of andTerms) {
         $('#sState').textContent = 'بررسی واژهٔ «' + term + '» در ' + fa(pool.length) + ' نتیجه…';
@@ -771,7 +772,7 @@ async function runSearch(reset = true) {
     }
     if (exactOnly) {
       // پایگاه‌ها عبارت را می‌شکنند، پس درستی را خودمان می‌سنجیم
-      const { keepOnlyExact } = await import('/phrase.js?v=24');
+      const { keepOnlyExact } = await import('/phrase.js?v=25');
       $('#sState').textContent = 'بررسی عبارت دقیق در ' + fa(rows.length) + ' نتیجه…';
       const res = await keepOnlyExact(rows, names, {
         fullText: readFullText,
@@ -995,6 +996,164 @@ function showInLibrary(p) {
   }, 700);
 }
 
+/* ═════════ رسم ساختار و جست‌وجو بر اساس آن ═════════ */
+let JSME_APPLET = null;
+
+async function bootSketcher() {
+  if (JSME_APPLET) return;
+  const st = $('#dwState');
+  st.textContent = 'در حال بار کردن ویرایشگر ساختار…';
+  try {
+    const { sketcher } = await import('/sketch.js?v=25');
+    JSME_APPLET = await sketcher('jsme', { height: '360px' });
+    st.textContent = 'ساختار را بکشید و «شناسایی کن» را بزنید.';
+  } catch (e) {
+    st.textContent = e.message + ' — می‌توانید به‌جایش SMILES را در کادر زیر بچسبانید.';
+  }
+}
+
+$('#dwFromSketch').onclick = () => {
+  if (!JSME_APPLET) { $('#dwState').textContent = 'ویرایشگر هنوز آماده نیست'; return; }
+  try {
+    const s = JSME_APPLET.smiles();
+    if (!s) { $('#dwState').textContent = 'چیزی کشیده نشده'; return; }
+    $('#dwSmiles').value = s;
+    $('#dwState').textContent = 'SMILES از نقاشی خوانده شد.';
+  } catch (e) { $('#dwState').textContent = 'خواندن نقاشی نشد: ' + e.message; }
+};
+
+document.querySelectorAll('.chip.dwEx').forEach((b) => {
+  b.onclick = () => { $('#dwSmiles').value = b.dataset.s; identifyDrawn(); };
+});
+$('#dwGo').onclick = () => identifyDrawn();
+$('#dwSmiles').addEventListener('keydown', (e) => { if (e.key === 'Enter') identifyDrawn(); });
+
+async function identifyDrawn() {
+  const st = $('#dwState'), card = $('#dwCard'), papers = $('#dwPapers');
+  // اگر چیزی در کادر نیست ولی نقاشی هست، از نقاشی بخوان
+  let smiles = $('#dwSmiles').value.trim();
+  if (!smiles && JSME_APPLET) { try { smiles = JSME_APPLET.smiles() || ''; $('#dwSmiles').value = smiles; } catch { /* */ } }
+  if (!smiles) { st.textContent = 'اول ساختاری بکشید یا SMILES بدهید'; return; }
+
+  st.textContent = 'در حال شناسایی در PubChem…';
+  card.innerHTML = ''; papers.innerHTML = '';
+  try {
+    const sk = await import('/sketch.js?v=25');
+    const c = await sk.identify(smiles);
+
+    if (!c.found) {
+      st.textContent = 'این ساختار دقیقاً در PubChem نیست — شاید ترکیب تازه‌ای باشد.';
+      const near = await sk.closest(smiles);
+      if (near.length) {
+        card.appendChild(el('div', 'note', 'نزدیک‌ترین ترکیب‌های شناخته‌شده:'));
+        card.appendChild(thumbGrid(near));
+      }
+      return;
+    }
+
+    card.appendChild(compoundCard(c));
+    st.textContent = 'شناسایی شد — حالا می‌توانید در مقالات دنبالش بگردید.';
+  } catch (e) { st.textContent = e.message; }
+}
+
+function thumbGrid(list) {
+  const box = el('div', 'simGrid');
+  list.forEach((s) => {
+    const a = el('a', 'simCell');
+    a.href = s.page; a.target = '_blank'; a.rel = 'noopener';
+    const im = document.createElement('img');
+    im.src = s.image; im.alt = s.formula || ''; im.loading = 'lazy';
+    a.appendChild(im);
+    a.appendChild(el('span', null, s.formula || ('CID ' + s.cid)));
+    box.appendChild(a);
+  });
+  return box;
+}
+
+function compoundCard(c) {
+  const card = el('div', 'card found');
+  const head = el('div', 'tags');
+  head.appendChild(el('span', 'tag id', 'CID ' + fa(c.cid)));
+  if (c.formula) head.appendChild(el('span', 'tag', c.formula));
+  head.appendChild(el('span', c.drugLike ? 'tag ok' : 'tag no',
+    c.drugLike ? 'دارومانند' : fa(c.lipinskiViolations) + ' نقض لیپینسکی'));
+  card.appendChild(head);
+
+  card.appendChild(el('h3', null, c.common || c.iupac || ('CID ' + c.cid)));
+  if (c.iupac && c.iupac !== c.common) card.appendChild(el('div', 'hint ltr', c.iupac));
+
+  const split = el('div', 'molRow');
+  const img = document.createElement('img');
+  img.className = 'mol'; img.src = c.image; img.alt = '';
+  split.appendChild(img);
+  const dl = el('dl', 'kv grow');
+  [['جرم مولکولی', c.mw], ['logP', c.logp], ['TPSA', c.tpsa],
+   ['دهندهٔ H', c.hbd], ['گیرندهٔ H', c.hba], ['پیوند چرخان', c.rotb]]
+    .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, v == null ? '—' : fa(v))); });
+  split.appendChild(dl);
+  card.appendChild(split);
+  card.appendChild(el('div', 'doi ltr', c.smiles));
+  if (c.synonyms.length) {
+    const d = el('details');
+    d.appendChild(el('summary', null, 'نام‌های دیگر (' + fa(c.synonyms.length) + ')'));
+    d.appendChild(el('div', 'body ltr', c.synonyms.join('  ·  ')));
+    card.appendChild(d);
+  }
+
+  const row = el('div', 'row');
+  const find = el('button', 'btn primary sm', 'مقالاتش را پیدا کن');
+  find.onclick = () => papersForCompound(c, find);
+  row.appendChild(find);
+
+  const bio = el('button', 'btn ghost sm', 'فعالیت زیستی');
+  bio.onclick = async () => {
+    bio.disabled = true; bio.textContent = 'در حال خواندن…';
+    try {
+      const cl = await import('/chembl.js?v=25');
+      const mol = await cl.findMolecule(c.smiles);
+      const { rows } = await cl.activitiesOf(mol.id);
+      bio.remove();
+      if (!rows.length) card.appendChild(el('div', 'note', 'در ChEMBL اندازه‌گیری‌ای برایش ثبت نشده.'));
+      else card.appendChild(actTable(rows, false));
+    } catch (e) { bio.disabled = false; bio.textContent = e.message; }
+  };
+  row.appendChild(bio);
+
+  const a = el('a', 'btn ghost sm', 'صفحهٔ PubChem');
+  a.href = c.page; a.target = '_blank'; a.rel = 'noopener';
+  row.appendChild(a);
+  card.appendChild(row);
+  return card;
+}
+
+/** با نام‌های همین ترکیب در سه پایگاه می‌گردد و فقط نتایج واقعی را نگه می‌دارد. */
+async function papersForCompound(c, btn) {
+  const st = $('#dwState'), out = $('#dwPapers');
+  btn.disabled = true;
+  out.innerHTML = '';
+  const names = [c.common, c.iupac, ...c.synonyms].filter(Boolean);
+  const queryName = c.common || c.iupac;
+  try {
+    st.textContent = 'جست‌وجو با نام «' + queryName + '»…';
+    const { searchAll } = await import('/sources.js?v=25');
+    const j = await searchAll(queryName, { use: ['openalex', 'europepmc', 'crossref'] });
+
+    st.textContent = 'بررسی اینکه واقعاً دربارهٔ همین ترکیب‌اند…';
+    const { keepOnlyExact } = await import('/phrase.js?v=25');
+    const res = await keepOnlyExact(j.results, names.slice(0, 12), { fullText: false });
+
+    if (!res.kept.length) {
+      st.textContent = 'مقاله‌ای که نام این ترکیب در آن باشد پیدا نشد (' +
+        fa(res.droppedCount) + ' نتیجهٔ نامربوط کنار رفت)';
+    } else {
+      st.textContent = fa(res.kept.length) + ' مقاله دربارهٔ این ترکیب — ' +
+        fa(res.droppedCount) + ' نتیجهٔ نامربوط کنار گذاشته شد';
+      res.kept.forEach((r) => out.appendChild(resultCard(r, r.matchedIn ? 'در ' + r.matchedIn : null)));
+    }
+  } catch (e) { st.textContent = e.message; }
+  btn.disabled = false;
+}
+
 /* ═════════ ترجمهٔ مقاله ═════════ */
 let TR = { paper: null, sections: [], engine: 'auto' };
 
@@ -1031,7 +1190,7 @@ async function loadForTranslation(paper) {
   out.innerHTML = '';
   st.textContent = 'در حال خواندن متن مقاله…';
   try {
-    const { sections } = await import('/translate.js?v=24');
+    const { sections } = await import('/translate.js?v=25');
     let full = '';
     try { full = (await api('/api/papers/' + paper.id + '/text')).raw_text || ''; } catch { /* ندارد */ }
     TR.paper = paper;
@@ -1048,7 +1207,7 @@ async function loadForTranslation(paper) {
     if (paper.doi) c.appendChild(el('div', 'doi', paper.doi));
 
     const bar = el('div', 'row');
-    const engines = await (await import('/translate.js?v=24')).availableEngines();
+    const engines = await (await import('/translate.js?v=25')).availableEngines();
     const sel = document.createElement('select');
     engines.forEach((en) => {
       const o = el('option', null, en.label + ' — ' + en.note);
@@ -1096,7 +1255,7 @@ function sectionCard(block) {
   go.onclick = async () => {
     go.disabled = true;
     try {
-      const { translate } = await import('/translate.js?v=24');
+      const { translate } = await import('/translate.js?v=25');
       const res = await translate(block.text, {
         engine: TR.engine,
         onProgress: (done, total, msg) => {
@@ -1136,7 +1295,7 @@ async function searchInFiles() {
   out.innerHTML = '';
   try {
     // نام ترکیب را به مترادف‌هایش گسترش می‌دهیم: فایل ممکن است املای دیگری داشته باشد
-    const { expandChemicalName } = await import('/phrase.js?v=24');
+    const { expandChemicalName } = await import('/phrase.js?v=25');
     const groups = [];
     let synNote = '';
     for (const t of terms) {
@@ -1218,7 +1377,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=24');
+    const ex = await import('/extract.js?v=25');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -1335,7 +1494,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=24');
+    const pc = await import('/pubchem.js?v=25');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1486,7 +1645,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=24');
+    const cl = await import('/chembl.js?v=25');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1525,7 +1684,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=24');
+    const cl = await import('/chembl.js?v=25');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 

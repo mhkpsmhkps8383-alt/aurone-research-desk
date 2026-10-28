@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=24">
+<link rel="stylesheet" href="/style.css?v=25">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -44,6 +44,7 @@
       <a href="#discover" data-v="discover">کشف مقاله <span class="badge" id="newBadge" hidden></span></a>
       <a href="#library" data-v="library">کتابخانه</a>
       <a href="#infiles" data-v="infiles">جست‌وجو در کتابخانه</a>
+      <a href="#draw" data-v="draw">رسم ساختار</a>
       <a href="#translate" data-v="translate">ترجمه</a>
       <a href="#matrix" data-v="matrix">جدول شواهد</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
@@ -324,6 +325,35 @@
   <div id="ifOut" class="stack"></div>
 </section>
 
+<!-- ═══ رسم ساختار ═══ -->
+<section id="v-draw" hidden>
+  <h1 class="neon">رسم ساختار</h1>
+  <p class="lede">ساختار را بکشید؛ می‌گوید چه ترکیبی است، خواصش را می‌آورد، و بر اساس همان نام در مقالات می‌گردد. اگر رسم روی گوشی سخت است، SMILES را بچسبانید.</p>
+
+  <div class="panel glow">
+    <div id="jsme" class="sketchBox"></div>
+    <div class="row" style="margin-top:12px">
+      <label class="fld grow">SMILES
+        <input id="dwSmiles" class="ltr" placeholder="یا مستقیم اینجا بچسبانید: O=C1c2ccccc2OC1=Cc1ccc(O)c(O)c1">
+      </label>
+      <div class="fld" style="justify-content:flex-end;flex-direction:row;gap:8px;align-items:flex-end">
+        <button class="btn ghost" id="dwFromSketch">از روی نقاشی</button>
+        <button class="btn primary" id="dwGo">شناسایی کن</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+      <span class="hint">نمونه برای شروع:</span>
+      <button class="chip sm dwEx" data-s="O=C1c2ccccc2OC1=Cc1ccc(O)c(O)c1">اسکلت اورون</button>
+      <button class="chip sm dwEx" data-s="O=C1c2cc(O)cc(O)c2OC1=Cc1ccc(O)c(O)c1">سولفورتین</button>
+      <button class="chip sm dwEx" data-s="Oc1ccc(cc1O)C=O">کاتکول‌آلدهید</button>
+    </div>
+    <span class="hint" id="dwState"></span>
+  </div>
+
+  <div id="dwCard"></div>
+  <div id="dwPapers" class="stack"></div>
+</section>
+
 <!-- ═══ ترجمه ═══ -->
 <section id="v-translate" hidden>
   <h1 class="neon">ترجمهٔ مقاله</h1>
@@ -500,7 +530,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=24"></script>
+<script type="module" src="/app.js?v=25"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
