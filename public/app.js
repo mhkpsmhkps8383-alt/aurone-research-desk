@@ -1,5 +1,5 @@
 import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=7';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=8';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=9';
 
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };

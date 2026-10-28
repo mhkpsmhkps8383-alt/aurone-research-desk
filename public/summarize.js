@@ -8,6 +8,38 @@
  * فارسی و انگلیسی هر دو.
  */
 
+/**
+ * ترمیم متنِ فارسیِ بیرون‌آمده از PDF.
+ * استخراج‌کننده‌های PDF پیوندِ «لا» را می‌شکنند و وارونه بیرون می‌دهند، پس
+ * «سلامت» می‌شود «سالمت» و «اختلال» می‌شود «اختالل». دو کار می‌کنیم:
+ * اول شکل‌های نمایشیِ عربی (FB50–FEFF) را به حرف پایه برمی‌گردانیم — این
+ * ریشهٔ مشکل در بسیاری از فایل‌هاست — و بعد پرتکرارترین واژه‌هایی را که
+ * این‌طور خراب می‌شوند تصحیح می‌کنیم. متنِ اصلیِ ذخیره‌شده دست‌نخورده می‌ماند.
+ */
+const LIGATURES = {
+  'ﻻ': 'لا', 'ﻼ': 'لا', 'ﻵ': 'لآ', 'ﻶ': 'لآ',
+  'ﻷ': 'لأ', 'ﻸ': 'لأ', 'ﻹ': 'لإ', 'ﻺ': 'لإ',
+};
+const BROKEN = [
+  ['سالمت', 'سلامت'], ['اختالل', 'اختلال'], ['اختالف', 'اختلاف'],
+  ['تحوالت', 'تحولات'], ['فعاالن', 'فعالان'], ['مسئوالنه', 'مسئولانه'],
+  ['مسئوالن', 'مسئولان'], ['رگوالتوری', 'رگولاتوری'], ['اعالم', 'اعلام'],
+  ['اسالمی', 'اسلامی'], ['انقالب', 'انقلاب'], ['مقاالت', 'مقالات'],
+  ['اطالعات', 'اطلاعات'], ['اطالع', 'اطلاع'], ['استقالل', 'استقلال'],
+  ['تالش', 'تلاش'], ['خالصه', 'خلاصه'], ['عالوه', 'علاوه'],
+  ['کالس', 'کلاس'], ['اخالق', 'اخلاق'], ['اصالح', 'اصلاح'],
+  ['اعالن', 'اعلان'], ['بالفاصله', 'بلافاصله'], ['پالسما', 'پلاسما'],
+  ['طالیی', 'طلایی'], ['عالئم', 'علائم'], ['عالقه', 'علاقه'],
+  ['ابتال', 'ابتلا'], ['باال', 'بالا'], ['کاال', 'کالا'],
+  ['احتماال', 'احتمالا'], ['کامال', 'کاملا'], ['اصوال', 'اصولا'],
+  ['اوال', 'اولا'], ['تعاالت', 'تعالات'], ['اشتغال زایی', 'اشتغال‌زایی'],
+];
+export function repairPdfPersian(s = '') {
+  let t = String(s).replace(/[ﭐ-﻿]/g, (ch) => LIGATURES[ch] || ch);
+  for (const [bad, good] of BROKEN) t = t.split(bad).join(good);
+  return t;
+}
+
 /* ───── یکدست‌سازی نویسه‌های عربی و فارسی */
 export function normalize(s = '') {
   return String(s)
@@ -85,7 +117,7 @@ export function sentences(text) {
 
 /* ───── پیدا کردن چکیدهٔ خودِ مقاله، اگر داشته باشد */
 export function findAbstract(text) {
-  const t = String(text).replace(/\r/g, '');
+  const t = repairPdfPersian(String(text).replace(/\r/g, ''));
   const start = t.search(/(^|\n|\s)(چکیده|چکیدە|abstract|summary)\s*[:：.\-—]?\s*/i);
   if (start < 0) return null;
   const after = t.slice(start).replace(/^(\s|\n)*(چکیده|چکیدە|abstract|summary)\s*[:：.\-—]?\s*/i, '');
@@ -99,7 +131,7 @@ export function findAbstract(text) {
 /* ───── واژه‌های کلیدی */
 export function keywords(text, n = 10) {
   const freq = new Map();
-  for (const w of words(text.slice(0, 60000))) freq.set(w, (freq.get(w) || 0) + 1);
+  for (const w of words(repairPdfPersian(text.slice(0, 60000)))) freq.set(w, (freq.get(w) || 0) + 1);
   return [...freq.entries()]
     .filter(([w, c]) => c > 2 && w.length > 3)
     .sort((a, b) => b[1] - a[1])
@@ -113,9 +145,11 @@ export function keywords(text, n = 10) {
  * @param {object} opt {count: تعداد جمله, title: عنوان برای وزن‌دهی}
  */
 export function summarize(text, { count = 5, title = '' } = {}) {
-  const body = String(text).slice(0, 120000);
+  const body = repairPdfPersian(String(text).slice(0, 120000));
   const sents = sentences(body);
   if (sents.length < 3) return '';
+  // سند کوتاه نباید «خلاصه»ای به اندازهٔ خودش بگیرد
+  count = Math.max(2, Math.min(count, Math.ceil(sents.length * 0.4)));
 
   // بسامد واژه در کل متن
   const tf = new Map();
