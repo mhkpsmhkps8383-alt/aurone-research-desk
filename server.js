@@ -2,7 +2,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { q, ensureSchema, seedIfEmpty } from './db.js';
-import { enrichDoi, searchPapers, recommend, citedBy, cleanDoi } from './scholar.js';
+import { enrichDoi, searchPapers } from './scholar.js';
 import { toBibtex, toRis } from './cite.js';
 
 const app = express();
@@ -116,19 +116,6 @@ app.get('/api/scholar/enrich', async (req, res) => {
 // جست‌وجو در Europe PMC (شامل کل PubMed)
 app.get('/api/scholar/search', async (req, res) => {
   const out = await searchPapers(req.query.q || '', req.query.page, req.query.years || '');
-  res.status(out.error ? 400 : 200).json(out);
-});
-
-// چه مقالاتی به این مقاله استناد کرده‌اند
-app.get('/api/scholar/cited-by', async (req, res) => {
-  const out = await citedBy(req.query.doi || '');
-  res.status(out.error ? 400 : 200).json(out);
-});
-
-// مقالاتی که چند مقالهٔ کتابخانه به آنها استناد کرده‌اند ولی در کتابخانه نیستند
-app.get('/api/scholar/recommend', async (_req, res) => {
-  const { rows } = await q("SELECT doi FROM papers WHERE doi IS NOT NULL AND doi <> ''");
-  const out = await recommend(rows.map((r) => r.doi));
   res.status(out.error ? 400 : 200).json(out);
 });
 

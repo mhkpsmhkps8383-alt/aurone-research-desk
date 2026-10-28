@@ -104,18 +104,15 @@ function merge(...parts) {
 export async function enrichDoi(rawDoi) {
   const doi = cleanDoi(rawDoi);
   if (!/^10\.\d{4,9}\//.test(doi)) return { error: 'DOI معتبر نیست' };
-  const [epmc, oa, cr] = await Promise.all([
+  // OpenAlex عمداً اینجا نیست: سهمیهٔ بی‌کلیدش بر پایهٔ آی‌پی است و آی‌پی سرورِ
+  // رایگان مشترک است. آن بخش از مرورگر کاربر خوانده می‌شود (public/openalex.js).
+  const [epmc, cr] = await Promise.all([
     get(`${EPMC}/search?query=DOI:%22${encodeURIComponent(doi)}%22&format=json&resultType=core&pageSize=1`),
-    get(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}`),
     get(`https://api.crossref.org/works/${encodeURIComponent(doi)}`),
   ]);
-  const merged = merge(
-    fromEpmc(epmc?.resultList?.result?.[0]),
-    fromOpenAlex(oa),
-    fromCrossref(cr?.message)
-  );
+  const merged = merge(fromEpmc(epmc?.resultList?.result?.[0]), fromCrossref(cr?.message));
   if (!merged.title) return { error: 'در هیچ پایگاهی پیدا نشد' };
-  return { doi, ...merged, found_in: [epmc?.resultList?.result?.length && 'EuropePMC', oa?.id && 'OpenAlex', cr?.message && 'Crossref'].filter(Boolean) };
+  return { doi, ...merged, found_in: [epmc?.resultList?.result?.length && 'EuropePMC', cr?.message && 'Crossref'].filter(Boolean) };
 }
 
 /** جست‌وجوی مقاله در Europe PMC (شامل کل PubMed). */

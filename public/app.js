@@ -1,3 +1,5 @@
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=7';
+
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
 const fa = (n) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]);
@@ -380,7 +382,7 @@ function resultCard(r, extra) {
     cb.onclick = async () => {
       cb.disabled = true; cb.textContent = 'در حال خواندن…';
       try {
-        const j = await api('/api/scholar/cited-by?doi=' + encodeURIComponent(r.doi));
+        const j = await oaCitedBy(r.doi);
         cb.remove();
         const box = el('div', 'stack sub-stack');
         box.appendChild(el('div', 'hint', fa(j.total) + ' مقاله به این کار استناد کرده‌اند؛ پراستنادترین‌هایشان:'));
@@ -434,12 +436,18 @@ document.querySelectorAll('.chip.ex').forEach((b) => {
 $('#recGo').onclick = async () => {
   const st = $('#recState'), w = $('#recList');
   $('#recGo').disabled = true;
-  st.textContent = 'در حال خواندن گرافِ استناد… چند ثانیه طول می‌کشد.';
+  st.textContent = 'در حال خواندن گرافِ استناد…';
   w.innerHTML = '';
   try {
-    const j = await api('/api/scholar/recommend');
+    const rows = await api('/api/papers');
+    const dois = rows.map((r) => r.doi).filter(Boolean);
+    const j = await oaRecommend(dois, 20, (i, n, what) => {
+      st.textContent = what + ' — گام ' + fa(i) + ' از ' + fa(n);
+    });
     const n = (j.results || []).length;
-    st.textContent = n ? fa(n) + ' مقاله که احتمالاً باید در کتابخانه‌تان باشد' : 'چیز تازه‌ای پیدا نشد';
+    st.textContent = n
+      ? fa(n) + ' مقاله که احتمالاً باید در کتابخانه‌تان باشد (از میان ' + fa(j.seen) + ' منبعِ بررسی‌شده)'
+      : 'چیز تازه‌ای پیدا نشد';
     (j.results || []).forEach((r) => w.appendChild(resultCard(r)));
   } catch (e) { st.textContent = e.message; }
   $('#recGo').disabled = false;
