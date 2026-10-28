@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=18';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=18';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=19';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=19';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -296,7 +296,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=18');
+    const { extractFigures } = await import('/figures.js?v=19');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -333,7 +333,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=18');
+  const { toCompact } = await import('/figures.js?v=19');
   let done = 0;
   for (const f of picks) {
     try {
@@ -381,7 +381,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=18');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=19');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -477,7 +477,7 @@ $('#impIn').onchange = async (e) => {
   IMPORTED = [];
   const kinds = [];
   try {
-    const imp = await import('/import.js?v=18');
+    const imp = await import('/import.js?v=19');
     for (const f of files) {
       try {
         const { kind, records } = await imp.parseFile(f);
@@ -599,7 +599,13 @@ function resultCard(r, extra) {
   if (r.authors) c.appendChild(el('div', 'hint', r.authors.split(',').slice(0, 8).join('،')));
   const meta = [r.journal, r.doi].filter(Boolean).join(' · ');
   if (meta) c.appendChild(el('div', 'doi', meta));
-  if (r.snippet || r.abstract) {
+  if (r.matchedIn && r.snippet) {
+    const sn = el('div', 'snippet');
+    sn.appendChild(el('span', 'hint', 'در ' + r.matchedIn + ': '));
+    sn.appendChild(document.createTextNode('…' + r.snippet + '…'));
+    c.appendChild(sn);
+  }
+  if (r.abstract || (!r.matchedIn && r.snippet)) {
     const d = el('details');
     d.appendChild(el('summary', null, 'چکیده'));
     d.appendChild(el('div', 'body', r.abstract || r.snippet));
@@ -673,6 +679,16 @@ $('#broadChip').onclick = (e) => {
   e.target.setAttribute('aria-pressed', String(broadSearch));
   if ($('#sQ').value.trim()) runSearch(true);
 };
+let exactOnly = false, readFullText = true;
+$('#exactChip').onclick = (e) => {
+  exactOnly = !exactOnly;
+  e.target.setAttribute('aria-pressed', String(exactOnly));
+  if ($('#sQ').value.trim()) runSearch(true);
+};
+$('#ftChip').onclick = (e) => {
+  readFullText = !readFullText;
+  e.target.setAttribute('aria-pressed', String(readFullText));
+};
 
 async function runSearch(reset = true) {
   const qv = $('#sQ').value.trim();
@@ -681,19 +697,39 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=18');
+    const { searchAll } = await import('/sources.js?v=19');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
-      use: [...pickedSources],
+      use: [...pickedSources], exact: exactOnly,
     });
     const per = Object.entries(j.counts).map(([k, v]) => k + ' ' + fa(v)).join(' · ');
     const dupes = j.raw - j.results.length;
-    $('#sState').textContent = j.results.length
-      ? fa(j.results.length) + ' نتیجهٔ یکتا' + (dupes > 0 ? ' (' + fa(dupes) + ' تکراری ادغام شد)' : '') +
-        (per ? ' — ' + per : '') + (j.errors.length ? ' · ' + j.errors.join('، ') : '')
-      : (j.errors.length ? j.errors.join('، ') : 'نتیجه‌ای نبود');
+
+    let rows = j.results, exactNote = '';
+    if (exactOnly) {
+      // پایگاه‌ها عبارت را می‌شکنند، پس درستی را خودمان می‌سنجیم
+      const { keepOnlyExact } = await import('/phrase.js?v=19');
+      $('#sState').textContent = 'بررسی عبارت دقیق در ' + fa(rows.length) + ' نتیجه…';
+      const res = await keepOnlyExact(rows, qv, {
+        fullText: readFullText,
+        onProgress: (n, total) => {
+          $('#sState').textContent = 'بررسی عبارت دقیق: ' + fa(n) + ' از ' + fa(total);
+        },
+      });
+      rows = res.kept;
+      exactNote = ' · ' + fa(res.droppedCount) + ' نتیجه بی‌ربط کنار گذاشته شد' +
+        (res.checkedFullText ? ' · متن کامل ' + fa(res.checkedFullText) + ' مقاله خوانده شد' : '');
+    }
+
+    $('#sState').textContent = rows.length
+      ? fa(rows.length) + (exactOnly ? ' نتیجهٔ دقیق' : ' نتیجهٔ یکتا') +
+        (!exactOnly && dupes > 0 ? ' (' + fa(dupes) + ' تکراری ادغام شد)' : '') +
+        (per ? ' — ' + per : '') + exactNote +
+        (j.errors.length ? ' · ' + j.errors.join('، ') : '')
+      : (exactOnly ? 'هیچ نتیجه‌ای عینِ این عبارت را نداشت' + exactNote
+        : (j.errors.length ? j.errors.join('، ') : 'نتیجه‌ای نبود'));
     const w = $('#sList');
-    j.results.forEach((r) => w.appendChild(resultCard(r)));
+    rows.forEach((r) => w.appendChild(resultCard(r, r.matchedIn ? 'در ' + r.matchedIn : null)));
     $('#sMore').hidden = j.results.length < 12;
   } catch (e) { $('#sState').textContent = e.message; }
 }
@@ -844,7 +880,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=18');
+    const ex = await import('/extract.js?v=19');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -961,7 +997,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=18');
+    const pc = await import('/pubchem.js?v=19');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1112,7 +1148,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=18');
+    const cl = await import('/chembl.js?v=19');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1151,7 +1187,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=18');
+    const cl = await import('/chembl.js?v=19');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 

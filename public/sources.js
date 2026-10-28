@@ -89,8 +89,9 @@ async function fromCrossref(query, { page = 1, years = '' }) {
 }
 
 /* ───── Europe PMC: از سرور خودمان، چون آنجا محدودیتی نخورده‌ایم */
-async function fromEuropePmc(query, { page = 1, years = '' }) {
-  const p = new URLSearchParams({ q: query, page: String(page) });
+async function fromEuropePmc(query, { page = 1, years = '', exact = false }) {
+  // Europe PMC گیومه را می‌فهمد؛ OpenAlex نمی‌فهمد و با آن صفر نتیجه می‌دهد
+  const p = new URLSearchParams({ q: exact ? '"' + query + '"' : query, page: String(page) });
   if (years) p.set('years', years);
   const j = await getJson('/api/scholar/search?' + p);
   if (j.error) throw new Error(j.error);
@@ -119,10 +120,10 @@ function fold(into, extra) {
  * همهٔ پایگاه‌های انتخاب‌شده را هم‌زمان می‌پرسد و نتایج تکراری را یکی می‌کند.
  * شکستِ یک پایگاه بقیه را از کار نمی‌اندازد.
  */
-export async function searchAll(query, { page = 1, years = '', broad = false, use = null } = {}) {
+export async function searchAll(query, { page = 1, years = '', broad = false, use = null, exact = false } = {}) {
   const chosen = SOURCES.filter((s) => !use || use.includes(s.key));
   const settled = await Promise.allSettled(
-    chosen.map((s) => s.run(query, { page, years, broad })));
+    chosen.map((s) => s.run(query, { page, years, broad, exact })));
 
   const byDoi = new Map(), byTitle = new Map(), merged = [];
   const errors = [], counts = {};
