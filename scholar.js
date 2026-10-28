@@ -148,19 +148,21 @@ export async function recommend(libraryDois, limit = 20) {
 
   // OpenAlex تا ۵۰ شناسه را در یک درخواست می‌پذیرد
   for (let i = 0; i < seeds.length; i += 25) {
-    // نحو OR در OpenAlex: filter=doi:a|b — نه اینکه کلید تکرار شود
-    const filt = 'doi:' + seeds.slice(i, i + 25).join('|');
+    // نحو OR در OpenAlex: filter=doi:a|b — نه اینکه کلید تکرار شود.
+    // خطِ لوله‌ای باید کدگذاری شود وگرنه fetch نود آدرس را نامعتبر می‌داند.
+    const filt = 'doi:' + seeds.slice(i, i + 25).map(encodeURIComponent).join('%7C');
     const j = await get(`https://api.openalex.org/works?filter=${filt}&per-page=25&select=id,referenced_works`, 15000);
     for (const w of j?.results || [])
       for (const ref of w.referenced_works || []) counts.set(ref, (counts.get(ref) || 0) + 1);
   }
 
+  const debug = { seeds: seeds.length, refs_seen: counts.size };
   const top = [...counts.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 60);
-  if (!top.length) return { results: [] };
+  if (!top.length) return { results: [], debug };
 
   const out = [];
   for (let i = 0; i < top.length && out.length < limit; i += 20) {
-    const ids = top.slice(i, i + 20).map(([id]) => id.replace('https://openalex.org/', '')).join('|');
+    const ids = top.slice(i, i + 20).map(([id]) => id.replace('https://openalex.org/', '')).join('%7C');
     const j = await get(
       `https://api.openalex.org/works?filter=openalex_id:${ids}&per-page=20` +
       `&select=id,doi,display_name,publication_year,cited_by_count,authorships,primary_location,best_oa_location`, 12000);
@@ -180,7 +182,7 @@ export async function recommend(libraryDois, limit = 20) {
     }
   }
   out.sort((a, b) => b.shared - a.shared || b.citations - a.citations);
-  return { results: out.slice(0, limit) };
+  return { results: out.slice(0, limit), debug };
 }
 
 /** مقالاتی که به یک مقالهٔ معین استناد کرده‌اند — برای دنبال کردن ادامهٔ یک کار. */
