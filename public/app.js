@@ -648,7 +648,6 @@ async function pcLookup(qv) {
     const split = el('div', 'molRow');
     const img = document.createElement('img');
     img.className = 'mol'; img.src = c.image; img.alt = 'ساختار ' + c.name;
-    img.loading = 'lazy';
     split.appendChild(img);
 
     const dl = el('dl', 'kv grow');
