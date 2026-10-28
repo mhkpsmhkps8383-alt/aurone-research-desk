@@ -46,6 +46,56 @@ export function findPhrase(text, phrase, { pad = 150 } = {}) {
   };
 }
 
+/**
+ * یک ترکیب را به چند شکل می‌نویسند و به‌عنوان رشتهٔ متنی هیچ‌کدام با هم جور
+ * نمی‌شوند: «4,6-dihydroxy-2,3-dihydro-1-benzofuran-3-one» و
+ * «4,6-dihydroxybenzofuran-3(2H)-one» یک ترکیبند. پس نام را به PubChem
+ * می‌دهیم و همهٔ مترادف‌هایش را می‌گیریم تا هر کدام را دید، بپذیرد.
+ */
+const PUG = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
+
+/** چند صورتِ مکانیکیِ نام، برای وقتی PubChem املای کاربر را نمی‌شناسد. */
+function nameVariants(name) {
+  const n = String(name).trim();
+  const v = new Set([n]);
+  v.add(n.replace(/\b2,3-dihydro-?/i, ''));            // در «-3-one» ضمنی است
+  v.add(n.replace(/-1-benzofuran/i, 'benzofuran'));
+  v.add(n.replace(/\b1-benzofuran/i, 'benzofuran'));
+  v.add(n.replace(/-3-one\b/i, '-3(2H)-one'));
+  v.add(n.replace(/\b2,3-dihydro-?/i, '').replace(/-1-benzofuran/i, 'benzofuran'));
+  v.add(n.replace(/\b2,3-dihydro-?/i, '').replace(/-1-benzofuran/i, 'benzofuran').replace(/-3-one\b/i, '-3(2H)-one'));
+  return [...v].filter((x) => x && x.length > 4);
+}
+
+const CHEM_LOOKING = /\d.*[-(]|benzo|furan|phenyl|hydroxy|methoxy|amino|chlor|one\b|ol\b/i;
+
+/**
+ * نام ترکیب را به فهرست مترادف‌هایش گسترش می‌دهد.
+ * اگر چیزی پیدا نشد، فقط خودِ عبارت برمی‌گردد.
+ */
+export async function expandChemicalName(query) {
+  const q = String(query || '').trim();
+  if (!q || !CHEM_LOOKING.test(q)) return { names: [q], cid: null, resolved: false };
+
+  for (const variant of nameVariants(q)) {
+    try {
+      const r = await fetch(`${PUG}/compound/name/${encodeURIComponent(variant)}/synonyms/JSON`);
+      if (!r.ok) continue;
+      const j = await r.json();
+      const info = j.InformationList?.Information?.[0];
+      const syn = info?.Synonym || [];
+      if (!syn.length) continue;
+      // نام‌های سیستماتیک و تجاری به درد می‌خورند؛ کدهای انبارداری نه
+      const useful = syn.filter((s) =>
+        s.length > 5 && s.length < 90 &&
+        !/^(MFCD|SCHEMBL|DTXSID|CHEMBL|AKOS|UNII|EINECS|NSC|CID|Q\d)/i.test(s));
+      const names = [...new Set([q, ...useful])];
+      return { names, cid: info.CID, resolved: true, matchedVariant: variant, synonymCount: useful.length };
+    } catch { /* صورت بعدی */ }
+  }
+  return { names: [q], cid: null, resolved: false };
+}
+
 const EPMC = 'https://www.ebi.ac.uk/europepmc/webservices/rest';
 
 /** متن کاملِ مقالات دسترسی‌آزاد از Europe PMC. غیرآزادها متن کامل ندارند. */
@@ -67,7 +117,16 @@ async function openAccessText(rec) {
  * @param phrase عبارتی که باید عیناً باشد
  * @param opt {fullText: متن کاملِ مقالات رایگان هم خوانده شود, onProgress}
  */
-export async function keepOnlyExact(rows, phrase, { fullText = true, onProgress = () => {} } = {}) {
+export async function keepOnlyExact(rows, phrases, { fullText = true, onProgress = () => {} } = {}) {
+  const list = (Array.isArray(phrases) ? phrases : [phrases]).filter(Boolean);
+  const anyOf = (text) => {
+    for (const p of list) {
+      const hit = findPhrase(text, p);
+      if (hit) return { ...hit, matchedName: p };
+    }
+    return null;
+  };
+
   const kept = [], dropped = [];
   let checkedFullText = 0;
 
@@ -75,19 +134,19 @@ export async function keepOnlyExact(rows, phrase, { fullText = true, onProgress 
     const r = rows[i];
     onProgress(i + 1, rows.length);
 
-    const inTitle = findPhrase(r.title, phrase);
-    if (inTitle) { kept.push({ ...r, matchedIn: 'عنوان', snippet: inTitle.snippet }); continue; }
+    const inTitle = anyOf(r.title);
+    if (inTitle) { kept.push({ ...r, matchedIn: 'عنوان', snippet: inTitle.snippet, matchedName: inTitle.matchedName }); continue; }
 
     const body = r.abstract || r.snippet || r.summary || '';
-    const inAbs = findPhrase(body, phrase);
-    if (inAbs) { kept.push({ ...r, matchedIn: 'چکیده', snippet: inAbs.snippet }); continue; }
+    const inAbs = anyOf(body);
+    if (inAbs) { kept.push({ ...r, matchedIn: 'چکیده', snippet: inAbs.snippet, matchedName: inAbs.matchedName }); continue; }
 
     if (fullText && (r.oa_url || r.is_oa || r.pmcid)) {
       const text = await openAccessText(r);
       if (text) {
         checkedFullText++;
-        const inFull = findPhrase(text, phrase);
-        if (inFull) { kept.push({ ...r, matchedIn: 'متن کامل', snippet: inFull.snippet }); continue; }
+        const inFull = anyOf(text);
+        if (inFull) { kept.push({ ...r, matchedIn: 'متن کامل', snippet: inFull.snippet, matchedName: inFull.matchedName }); continue; }
       }
     }
     dropped.push(r);
