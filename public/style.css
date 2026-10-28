@@ -222,3 +222,26 @@ footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
 .savedCard{border-color:rgba(157,255,60,.45)}
 .card .x{margin-inline-start:auto}
 .card .row{align-items:flex-end}
+
+/* ───── بخش کشف مقاله و تکمیل خودکار */
+.tabs{display:flex;gap:8px;margin:18px 0 14px;flex-wrap:wrap}
+.tab{font:inherit;font-weight:500;color:var(--ink-2);background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:9px 18px;cursor:pointer;
+  transition:.18s}
+.tab:hover{color:var(--ink);border-color:rgba(47,243,255,.4)}
+.tab.on{color:var(--bg);background:var(--cyan);border-color:var(--cyan);
+  box-shadow:0 0 18px rgba(47,243,255,.35)}
+.panel.glow{border-color:rgba(47,243,255,.25);
+  box-shadow:inset 0 0 40px rgba(47,243,255,.05)}
+.card.found{border-color:rgba(157,255,60,.4)}
+.badge{display:inline-block;min-width:18px;padding:1px 6px;margin-inline-start:5px;
+  border-radius:999px;background:var(--magenta);color:#fff;font-size:11px;font-weight:700;
+  line-height:16px;text-align:center;vertical-align:middle}
+.bar{height:6px;margin-top:12px;border-radius:999px;overflow:hidden;
+  background:rgba(255,255,255,.08)}
+.bar>span{display:block;height:100%;width:4%;border-radius:999px;
+  background:linear-gradient(90deg,var(--cyan),var(--lime));transition:width .3s}
+.sub-stack{margin-top:14px;padding-inline-start:14px;
+  border-inline-start:2px solid rgba(47,243,255,.25)}
+.sub-stack .card{background:rgba(255,255,255,.02)}
+.chip.sm{padding:5px 12px;font-size:12px}

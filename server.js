@@ -2,6 +2,8 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { q, ensureSchema, seedIfEmpty } from './db.js';
+import { enrichDoi, searchPapers, recommend, citedBy, cleanDoi } from './scholar.js';
+import { toBibtex, toRis } from './cite.js';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -103,6 +105,123 @@ app.delete('/api/papers/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ───────── پایگاه‌های علمیِ باز (بدون کلید و بدون هزینه)
+
+// یک DOI را بده، هرچه رایگان دربارهٔ آن می‌شود دانست بگیر
+app.get('/api/scholar/enrich', async (req, res) => {
+  const out = await enrichDoi(req.query.doi || '');
+  res.status(out.error ? 404 : 200).json(out);
+});
+
+// جست‌وجو در Europe PMC (شامل کل PubMed)
+app.get('/api/scholar/search', async (req, res) => {
+  const out = await searchPapers(req.query.q || '', req.query.page, req.query.years || '');
+  res.status(out.error ? 400 : 200).json(out);
+});
+
+// چه مقالاتی به این مقاله استناد کرده‌اند
+app.get('/api/scholar/cited-by', async (req, res) => {
+  const out = await citedBy(req.query.doi || '');
+  res.status(out.error ? 400 : 200).json(out);
+});
+
+// مقالاتی که چند مقالهٔ کتابخانه به آنها استناد کرده‌اند ولی در کتابخانه نیستند
+app.get('/api/scholar/recommend', async (_req, res) => {
+  const { rows } = await q("SELECT doi FROM papers WHERE doi IS NOT NULL AND doi <> ''");
+  const out = await recommend(rows.map((r) => r.doi));
+  res.status(out.error ? 400 : 200).json(out);
+});
+
+const ENRICH_COLS = `title=COALESCE(NULLIF($2,''),title), journal=COALESCE(NULLIF($3,''),journal),
+  year=COALESCE($4,year), authors=COALESCE(NULLIF($5,''),authors),
+  abstract=COALESCE(NULLIF($6,''),abstract), citations=$7,
+  oa_url=COALESCE(NULLIF($8,''),oa_url), pmid=COALESCE(NULLIF($9,''),pmid),
+  pmcid=COALESCE(NULLIF($10,''),pmcid), openalex_id=COALESCE(NULLIF($11,''),openalex_id),
+  enriched_at=now(), updated_at=now()`;
+
+async function enrichRow(row) {
+  const d = await enrichDoi(row.doi);
+  if (d.error) {
+    await q('UPDATE papers SET enriched_at=now() WHERE id=$1', [row.id]);
+    return { id: row.id, ok: false, reason: d.error };
+  }
+  await q(`UPDATE papers SET ${ENRICH_COLS} WHERE id=$1`, [
+    row.id, d.title || '', d.journal || '', d.year || null, d.authors || '',
+    d.abstract || '', Number.isFinite(d.citations) ? d.citations : null,
+    d.oa_url || '', d.pmid || '', d.pmcid || '', d.openalex_id || '',
+  ]);
+  return { id: row.id, ok: true, citations: d.citations ?? null, oa: Boolean(d.oa_url) };
+}
+
+// غنی‌سازی یک مقالهٔ ذخیره‌شده
+app.post('/api/papers/:id/enrich', async (req, res) => {
+  const { rows } = await q("SELECT id,doi FROM papers WHERE id=$1", [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'پیدا نشد' });
+  if (!rows[0].doi) return res.status(400).json({ error: 'این مقاله DOI ندارد' });
+  res.json(await enrichRow(rows[0]));
+});
+
+// غنی‌سازی دسته‌ای — هر بار چند تا، تا درخواست طولانی نشود
+app.post('/api/enrich-batch', async (req, res) => {
+  const limit = Math.max(1, Math.min(10, Number(req.body?.limit) || 6));
+  const { rows } = await q(
+    `SELECT id,doi FROM papers WHERE doi IS NOT NULL AND doi <> '' AND enriched_at IS NULL
+     ORDER BY id LIMIT $1`, [limit]);
+  const done = [];
+  for (const r of rows) done.push(await enrichRow(r));
+  const left = await q(
+    "SELECT count(*)::int AS n FROM papers WHERE doi IS NOT NULL AND doi <> '' AND enriched_at IS NULL");
+  res.json({ done, remaining: left.rows[0].n });
+});
+
+app.get('/api/enrich-status', async (_req, res) => {
+  const { rows } = await q(`SELECT
+     count(*) FILTER (WHERE doi IS NOT NULL AND doi <> '')::int AS with_doi,
+     count(*) FILTER (WHERE enriched_at IS NOT NULL)::int AS done,
+     count(*) FILTER (WHERE abstract IS NOT NULL)::int AS abstracts,
+     count(*) FILTER (WHERE oa_url IS NOT NULL)::int AS free_pdf FROM papers`);
+  res.json(rows[0]);
+});
+
+// ───────── دیده‌بانی: جست‌وجوی ذخیره‌شده که مقالهٔ تازه‌اش را خبر می‌دهد
+app.get('/api/watches', async (_req, res) => {
+  const { rows } = await q(
+    `SELECT id,label,query,last_checked,jsonb_array_length(seen_ids) AS seen FROM watches ORDER BY id`);
+  res.json(rows);
+});
+
+app.post('/api/watches', async (req, res) => {
+  const { label, query } = req.body || {};
+  if (!query || !query.trim()) return res.status(400).json({ error: 'عبارت جست‌وجو لازم است' });
+  const first = await searchPapers(query, 1);
+  const ids = (first.results || []).map((r) => r.id).filter(Boolean);
+  const { rows } = await q(
+    `INSERT INTO watches (label,query,seen_ids,last_checked) VALUES ($1,$2,$3,now()) RETURNING id`,
+    [(label || query).trim().slice(0, 80), query.trim(), JSON.stringify(ids)]);
+  res.json({ ok: true, id: rows[0].id, baseline: ids.length });
+});
+
+app.delete('/api/watches/:id', async (req, res) => {
+  await q('DELETE FROM watches WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// بررسی همهٔ دیده‌بانی‌ها: چه چیزی از آخرین بار تازه آمده
+app.post('/api/watches/check', async (_req, res) => {
+  const { rows } = await q('SELECT id,label,query,seen_ids FROM watches ORDER BY id');
+  const out = [];
+  for (const w of rows) {
+    const r = await searchPapers(w.query, 1);
+    if (r.error) { out.push({ id: w.id, label: w.label, error: r.error, fresh: [] }); continue; }
+    const seen = new Set(w.seen_ids || []);
+    const fresh = (r.results || []).filter((x) => x.id && !seen.has(x.id));
+    const all = [...new Set([...(w.seen_ids || []), ...(r.results || []).map((x) => x.id)])].slice(-400);
+    await q('UPDATE watches SET seen_ids=$2, last_checked=now() WHERE id=$1', [w.id, JSON.stringify(all)]);
+    out.push({ id: w.id, label: w.label, total: r.total, fresh });
+  }
+  res.json({ watches: out, newCount: out.reduce((n, w) => n + (w.fresh?.length || 0), 0) });
+});
+
 // ───────── کتابخانهٔ ترکیبات و محاسبات
 app.get('/api/compounds', async (req, res) => {
   const { sort = 'score_direct', drug = '', cat = '' } = req.query;
@@ -135,6 +254,30 @@ app.get('/api/export.csv', async (_req, res) => {
   res.setHeader('content-type', 'text/csv; charset=utf-8');
   res.setHeader('content-disposition', 'attachment; filename="aurone-library.csv"');
   res.send('﻿' + head.join(',') + '\n' + body);
+});
+
+async function forExport(req) {
+  const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (ids.length) {
+    const { rows } = await q('SELECT * FROM papers WHERE id = ANY($1::bigint[]) ORDER BY id', [ids]);
+    return rows;
+  }
+  const { rows } = await q('SELECT * FROM papers ORDER BY id');
+  return rows;
+}
+
+app.get('/api/export.bib', async (req, res) => {
+  const rows = await forExport(req);
+  res.setHeader('content-type', 'application/x-bibtex; charset=utf-8');
+  res.setHeader('content-disposition', 'attachment; filename="aurone-library.bib"');
+  res.send(toBibtex(rows));
+});
+
+app.get('/api/export.ris', async (req, res) => {
+  const rows = await forExport(req);
+  res.setHeader('content-type', 'application/x-research-info-systems; charset=utf-8');
+  res.setHeader('content-disposition', 'attachment; filename="aurone-library.ris"');
+  res.send(toRis(rows));
 });
 
 app.get('/api/export.md', async (_req, res) => {

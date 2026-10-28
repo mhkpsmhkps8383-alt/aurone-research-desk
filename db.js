@@ -93,6 +93,16 @@ export async function ensureSchema() {
   // مهاجرت‌های تدریجی — روی دیتابیسی که از قبل ساخته شده هم بی‌خطر اجرا می‌شوند
   await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS filename text`);
   await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS pages int`);
+  // فراداده‌هایی که از پایگاه‌های باز می‌آیند
+  for (const [col, type] of [
+    ['abstract', 'text'], ['citations', 'int'], ['oa_url', 'text'],
+    ['pmid', 'text'], ['pmcid', 'text'], ['openalex_id', 'text'],
+    ['enriched_at', 'timestamptz'],
+  ]) await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+  await q(`CREATE TABLE IF NOT EXISTS watches (
+     id bigserial PRIMARY KEY, label text NOT NULL, query text NOT NULL,
+     seen_ids jsonb NOT NULL DEFAULT '[]'::jsonb, last_checked timestamptz,
+     created_at timestamptz NOT NULL DEFAULT now())`);
   for (const t of BUILTIN_TEMPLATES) {
     await q(
       `INSERT INTO templates (key, name, description, fields, builtin)

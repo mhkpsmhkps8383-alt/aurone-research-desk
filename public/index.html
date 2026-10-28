@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=5">
+<link rel="stylesheet" href="/style.css?v=6">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -41,6 +41,7 @@
     </a>
     <nav id="nav">
       <a href="#add" data-v="add">افزودن مقاله</a>
+      <a href="#discover" data-v="discover">کشف مقاله <span class="badge" id="newBadge" hidden></span></a>
       <a href="#library" data-v="library">کتابخانه</a>
       <a href="#templates" data-v="templates">قالب‌ها</a>
       <a href="#chem" data-v="chem">ترکیبات</a>
@@ -54,7 +55,22 @@
 <!-- ═══ تحلیل ═══ -->
 <section id="v-add">
   <h1 class="neon">افزودن مقاله به کتابخانه</h1>
-  <p class="lede">فایل مقاله را بدهید؛ متنش در همین مرورگر خوانده می‌شود و عنوان، DOI و سال خودکار از متن بیرون کشیده می‌شوند. هر چیزی را خواستید اصلاح کنید و ذخیره بزنید.</p>
+  <p class="lede">سریع‌ترین راه، دادن DOI است. فایل هم می‌شود داد؛ متنش در همین مرورگر خوانده می‌شود و اگر DOI داشته باشد، بقیهٔ اطلاعاتش خودکار از پایگاه‌های علمی می‌آید.</p>
+
+  <div class="panel glow">
+    <div class="row">
+      <label class="fld grow">DOI مقاله
+        <input id="doiIn" placeholder="10.1016/j.ejmech.2024.116123  یا  https://doi.org/…">
+      </label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="doiGo">بیاورش</button>
+      </div>
+    </div>
+    <span class="hint" id="doiState">از Europe PMC و OpenAlex و Crossref می‌خواند — عنوان، نویسنده‌ها، مجله، سال، چکیده، تعداد استناد و لینک PDF رایگان.</span>
+    <div id="doiCard"></div>
+  </div>
+
+  <h2 class="sub">یا فایل مقاله را بدهید</h2>
 
   <div class="panel drop" id="drop">
     <div class="dropInner">
@@ -105,6 +121,83 @@
   </div>
 </section>
 
+<!-- ═══ کشف مقاله ═══ -->
+<section id="v-discover" hidden>
+  <h1 class="neon">کشف مقاله</h1>
+  <p class="lede">جست‌وجو در Europe PMC که کل PubMed را در خود دارد، پیشنهاد بر پایهٔ گرافِ استناد، و دیده‌بانی برای مقالات تازه. همه رایگان و بدون کلید.</p>
+
+  <div class="tabs" id="dTabs">
+    <button class="tab on" data-d="search">جست‌وجو</button>
+    <button class="tab" data-d="rec">پیشنهاد برای شما</button>
+    <button class="tab" data-d="watch">دیده‌بانی</button>
+  </div>
+
+  <div id="d-search">
+    <div class="panel">
+      <div class="row">
+        <label class="fld grow">عبارت جست‌وجو
+          <input id="sQ" type="search" placeholder="aurone antioxidant   ·   benzofuranone Nrf2   ·   chalcone tyrosinase">
+        </label>
+        <label class="fld">از سال
+          <select id="sYear">
+            <option value="">هر سالی</option>
+            <option value="2024">۲۰۲۴ به بعد</option>
+            <option value="2022">۲۰۲۲ به بعد</option>
+            <option value="2020">۲۰۲۰ به بعد</option>
+            <option value="2015">۲۰۱۵ به بعد</option>
+          </select>
+        </label>
+        <div class="fld" style="justify-content:flex-end">
+          <button class="btn primary" id="sGo">جست‌وجو</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+        <span class="hint">نمونه:</span>
+        <button class="chip sm ex">aurone antioxidant</button>
+        <button class="chip sm ex">aurone Nrf2</button>
+        <button class="chip sm ex">benzofuran-3(2H)-one synthesis</button>
+        <button class="chip sm ex">sulfuretin neuroprotective</button>
+        <button class="chip sm ex">aurone tyrosinase inhibitor</button>
+      </div>
+      <span class="hint" id="sState"></span>
+    </div>
+    <div id="sList" class="stack"></div>
+    <div class="row" id="sMore" hidden style="justify-content:center;margin-top:14px">
+      <button class="btn ghost" id="sNext">نتایج بیشتر</button>
+    </div>
+  </div>
+
+  <div id="d-rec" hidden>
+    <div class="panel">
+      <p class="hint" style="margin:0">از OpenAlex می‌پرسیم مقالات کتابخانهٔ شما به چه منابعی استناد کرده‌اند. هر منبعی که <b>دو مقاله یا بیشتر</b> از کتابخانه‌تان به آن استناد کرده ولی خودش در کتابخانه نیست، احتمالاً مقالهٔ کلیدی‌ای است که از دستتان در رفته.</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="recGo">پیدایشان کن</button>
+        <span class="hint" id="recState"></span>
+      </div>
+    </div>
+    <div id="recList" class="stack"></div>
+  </div>
+
+  <div id="d-watch" hidden>
+    <div class="panel">
+      <p class="hint" style="margin:0">یک جست‌وجو را ذخیره کنید؛ هر بار که اپ را باز کنید، مقالات تازه‌ای که از آخرین بازدیدتان منتشر شده‌اند را نشان می‌دهد.</p>
+      <div class="row" style="margin-top:12px">
+        <label class="fld grow">عبارت<input id="wQ" placeholder="aurone antioxidant"></label>
+        <label class="fld">نام دلخواه<input id="wLabel" placeholder="اورون‌های آنتی‌اکسیدان"></label>
+        <div class="fld" style="justify-content:flex-end">
+          <button class="btn primary" id="wAdd">افزودن دیده‌بان</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost sm" id="wCheck">بررسی همه همین حالا</button>
+        <span class="hint" id="wState"></span>
+      </div>
+    </div>
+    <div id="wList" class="stack"></div>
+    <div id="wFresh" class="stack"></div>
+  </div>
+</section>
+
 <!-- ═══ کتابخانه ═══ -->
 <section id="v-library" hidden>
   <h1 class="neon">کتابخانه</h1>
@@ -128,12 +221,27 @@
         <button class="chip" id="fileChip" aria-pressed="false">فقط فایل‌های خودم</button>
       </div>
     </div>
-    <div class="row" style="margin-top:12px;gap:8px">
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
       <span class="hint" id="libCount"></span>
       <span class="spacer"></span>
-      <a class="btn ghost sm" href="/api/export.csv">خروجی CSV</a>
-      <a class="btn ghost sm" href="/api/export.md">خروجی Markdown</a>
+      <a class="btn ghost sm" href="/api/export.bib">BibTeX</a>
+      <a class="btn ghost sm" href="/api/export.ris">RIS</a>
+      <a class="btn ghost sm" href="/api/export.csv">CSV</a>
+      <a class="btn ghost sm" href="/api/export.md">Markdown</a>
     </div>
+  </div>
+
+  <div class="panel glow" id="enrichPanel" style="margin-top:14px">
+    <div class="row">
+      <div class="grow">
+        <b>تکمیل خودکار از پایگاه‌های علمی</b>
+        <div class="hint" id="enrichHint">…</div>
+      </div>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="enrichGo">شروع</button>
+      </div>
+    </div>
+    <div class="bar" id="enrichBar" hidden><span></span></div>
   </div>
 
   <div id="libList" class="stack"></div>
@@ -202,7 +310,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script src="/app.js?v=5"></script>
+<script src="/app.js?v=6"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

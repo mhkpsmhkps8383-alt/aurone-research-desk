@@ -14,7 +14,7 @@ const post = (url, body) => api(url, {
 let TEMPLATES = [];
 
 /* ───── مسیریابی */
-const VIEWS = ['add', 'library', 'templates', 'chem'];
+const VIEWS = ['add', 'discover', 'library', 'templates', 'chem'];
 function route() {
   let v = (location.hash || '#add').slice(1);
   if (!VIEWS.includes(v)) v = 'add';
@@ -23,7 +23,8 @@ function route() {
     a.toggleAttribute('aria-current', a.dataset.v === v);
     if (a.dataset.v === v) a.setAttribute('aria-current', 'page');
   });
-  if (v === 'library') loadLibrary();
+  if (v === 'library') { loadLibrary(); enrichStatus(); }
+  if (v === 'discover') loadWatches();
   if (v === 'templates') renderTemplates();
   if (v === 'chem') loadChem();
 }
@@ -175,6 +176,7 @@ function renderQueue() {
     head.appendChild(el('span', 'tag id', it.file.name));
     if (it.rec.pages) head.appendChild(el('span', 'tag', fa(it.rec.pages) + ' صفحه'));
     if (it.state === 'reading') head.appendChild(el('span', 'tag', 'در حال خواندن…'));
+    if (it.enriched) head.appendChild(el('span', 'tag nrf', 'تکمیل‌شده از ' + it.enriched));
     if (it.state === 'saved') head.appendChild(el('span', 'tag ok', 'در کتابخانه ✓'));
     if (it.state === 'err') head.appendChild(el('span', 'tag no', it.error));
     const x = el('button', 'x', '×');
@@ -248,6 +250,25 @@ async function addFiles(files) {
       const g = guessMeta(text, file.name);
       it.rec = { ...g, pages, filename: file.name, raw_text: text, summary: '', fields: {} };
       it.state = 'ready';
+      renderQueue();
+      // اگر DOI در متن بود، بقیهٔ اطلاعات را از پایگاه‌های باز می‌گیریم — حدسِ متنی جای این را نمی‌گیرد
+      if (g.doi) {
+        try {
+          const d = await api('/api/scholar/enrich?doi=' + encodeURIComponent(g.doi));
+          if (!d.error) {
+            it.rec = {
+              ...it.rec,
+              title: d.title || it.rec.title,
+              journal: d.journal || it.rec.journal,
+              year: d.year || it.rec.year,
+              authors: d.authors || null,
+              abstract: d.abstract || null,
+              summary: it.rec.summary || d.abstract || '',
+            };
+            it.enriched = (d.found_in || []).join(' + ');
+          }
+        } catch { /* بدون اینترنت هم همان حدسِ متنی می‌ماند */ }
+      }
     } catch (e) {
       it.state = 'err';
       it.error = e.message;
@@ -308,6 +329,232 @@ if (window.pdfjsLib) {
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
+/* ═════════ پایگاه‌های علمیِ باز ═════════ */
+
+/** کارت یک مقالهٔ بیرونی، با دکمهٔ افزودن به کتابخانه. */
+function resultCard(r, extra) {
+  const c = el('div', 'card');
+  const head = el('div', 'tags');
+  if (r.year) head.appendChild(el('span', 'tag id', fa(r.year)));
+  if (Number.isFinite(r.citations)) head.appendChild(el('span', 'tag', fa(r.citations) + ' استناد'));
+  if (r.shared) head.appendChild(el('span', 'tag nrf', fa(r.shared) + ' مقالهٔ شما به آن استناد کرده'));
+  if (r.oa_url || r.is_oa) head.appendChild(el('span', 'tag ok', 'متن کامل رایگان'));
+  if (extra) head.appendChild(el('span', 'tag', extra));
+  c.appendChild(head);
+
+  c.appendChild(el('h3', null, r.title || '—'));
+  if (r.authors) c.appendChild(el('div', 'hint', r.authors.split(',').slice(0, 8).join('،')));
+  const meta = [r.journal, r.doi].filter(Boolean).join(' · ');
+  if (meta) c.appendChild(el('div', 'doi', meta));
+  if (r.snippet || r.abstract) {
+    const d = el('details');
+    d.appendChild(el('summary', null, 'چکیده'));
+    d.appendChild(el('div', 'body', r.abstract || r.snippet));
+    c.appendChild(d);
+  }
+
+  const row = el('div', 'row');
+  const add = el('button', 'btn primary sm', 'افزودن به کتابخانه');
+  add.onclick = async () => {
+    add.disabled = true; add.textContent = 'در حال افزودن…';
+    try {
+      await post('/api/papers', {
+        title: r.title, doi: r.doi || null, journal: r.journal || null, year: r.year || null,
+        authors: r.authors || null, summary: r.abstract || r.snippet || null, source: 'scholar',
+      });
+      add.className = 'btn sm'; add.textContent = 'در کتابخانه ✓';
+      health();
+    } catch (e) { add.disabled = false; add.textContent = e.message; }
+  };
+  row.appendChild(add);
+  if (r.oa_url) {
+    const a = el('a', 'btn ghost sm', 'متن کامل');
+    a.href = r.oa_url; a.target = '_blank'; a.rel = 'noopener';
+    row.appendChild(a);
+  }
+  if (r.doi) {
+    const a = el('a', 'btn ghost sm', 'صفحهٔ ناشر');
+    a.href = 'https://doi.org/' + r.doi; a.target = '_blank'; a.rel = 'noopener';
+    row.appendChild(a);
+    const cb = el('button', 'btn ghost sm', 'چه کسانی استنادش کرده‌اند');
+    cb.onclick = async () => {
+      cb.disabled = true; cb.textContent = 'در حال خواندن…';
+      try {
+        const j = await api('/api/scholar/cited-by?doi=' + encodeURIComponent(r.doi));
+        cb.remove();
+        const box = el('div', 'stack sub-stack');
+        box.appendChild(el('div', 'hint', fa(j.total) + ' مقاله به این کار استناد کرده‌اند؛ پراستنادترین‌هایشان:'));
+        (j.results || []).forEach((x) => box.appendChild(resultCard(x)));
+        c.appendChild(box);
+      } catch (e) { cb.disabled = false; cb.textContent = e.message; }
+    };
+    row.appendChild(cb);
+  }
+  c.appendChild(row);
+  return c;
+}
+
+/* ───── تب‌های بخش کشف */
+document.querySelectorAll('#dTabs .tab').forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll('#dTabs .tab').forEach((x) => x.classList.toggle('on', x === t));
+    ['search', 'rec', 'watch'].forEach((k) => { $('#d-' + k).hidden = k !== t.dataset.d; });
+  };
+});
+
+/* ───── جست‌وجوی آنلاین */
+let sPage = 1;
+async function runSearch(reset = true) {
+  const qv = $('#sQ').value.trim();
+  if (qv.length < 2) { $('#sState').textContent = 'عبارت را کامل‌تر بنویسید'; return; }
+  if (reset) { sPage = 1; $('#sList').innerHTML = ''; }
+  $('#sState').textContent = 'در حال جست‌وجو…';
+  $('#sMore').hidden = true;
+  try {
+    const p = new URLSearchParams({ q: qv, page: sPage });
+    if ($('#sYear').value) p.set('years', $('#sYear').value);
+    const j = await api('/api/scholar/search?' + p);
+    $('#sState').textContent = j.total
+      ? fa(j.total.toLocaleString('en-US')) + ' نتیجه — پراستنادترین‌ها اول'
+      : 'نتیجه‌ای نبود';
+    const w = $('#sList');
+    j.results.forEach((r) => w.appendChild(resultCard(r)));
+    $('#sMore').hidden = !(j.results.length === 25);
+  } catch (e) { $('#sState').textContent = e.message; }
+}
+$('#sGo').onclick = () => runSearch(true);
+$('#sQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(true); });
+$('#sYear').onchange = () => { if ($('#sQ').value.trim()) runSearch(true); };
+$('#sNext').onclick = () => { sPage++; runSearch(false); };
+document.querySelectorAll('.chip.ex').forEach((b) => {
+  b.onclick = () => { $('#sQ').value = b.textContent; runSearch(true); };
+});
+
+/* ───── پیشنهاد بر پایهٔ گراف استناد */
+$('#recGo').onclick = async () => {
+  const st = $('#recState'), w = $('#recList');
+  $('#recGo').disabled = true;
+  st.textContent = 'در حال خواندن گرافِ استناد… چند ثانیه طول می‌کشد.';
+  w.innerHTML = '';
+  try {
+    const j = await api('/api/scholar/recommend');
+    const n = (j.results || []).length;
+    st.textContent = n ? fa(n) + ' مقاله که احتمالاً باید در کتابخانه‌تان باشد' : 'چیز تازه‌ای پیدا نشد';
+    (j.results || []).forEach((r) => w.appendChild(resultCard(r)));
+  } catch (e) { st.textContent = e.message; }
+  $('#recGo').disabled = false;
+};
+
+/* ───── دیده‌بانی */
+async function loadWatches() {
+  try {
+    const rows = await api('/api/watches');
+    const w = $('#wList'); w.innerHTML = '';
+    if (!rows.length) { w.appendChild(el('div', 'note', 'هنوز دیده‌بانی ندارید.')); return; }
+    rows.forEach((r) => {
+      const c = el('div', 'card');
+      const head = el('div', 'tags');
+      head.appendChild(el('span', 'tag id', r.label));
+      head.appendChild(el('span', 'tag', fa(r.seen) + ' مقالهٔ دیده‌شده'));
+      const x = el('button', 'x', '×');
+      x.title = 'حذف دیده‌بان';
+      x.onclick = async () => { await fetch('/api/watches/' + r.id, { method: 'DELETE' }); loadWatches(); };
+      head.appendChild(x);
+      c.appendChild(head);
+      c.appendChild(el('div', 'doi', r.query));
+      w.appendChild(c);
+    });
+  } catch { /* سرور خواب است */ }
+}
+
+$('#wAdd').onclick = async () => {
+  const st = $('#wState');
+  const query = $('#wQ').value.trim();
+  if (!query) { st.textContent = 'عبارت لازم است'; return; }
+  st.textContent = 'در حال ثبت و خواندن وضعیت فعلی…';
+  try {
+    const j = await post('/api/watches', { query, label: $('#wLabel').value.trim() || query });
+    $('#wQ').value = $('#wLabel').value = '';
+    st.textContent = 'ثبت شد — ' + fa(j.baseline) + ' مقالهٔ فعلی به‌عنوان «دیده‌شده» علامت خورد';
+    loadWatches();
+  } catch (e) { st.textContent = e.message; }
+};
+
+async function checkWatches(silent = false) {
+  const st = $('#wState'), w = $('#wFresh');
+  if (!silent) st.textContent = 'در حال بررسی…';
+  try {
+    const j = await post('/api/watches/check', {});
+    const badge = $('#newBadge');
+    badge.hidden = !j.newCount;
+    badge.textContent = fa(j.newCount);
+    if (silent) return j.newCount;
+    w.innerHTML = '';
+    st.textContent = j.newCount ? fa(j.newCount) + ' مقالهٔ تازه' : 'چیز تازه‌ای نیست';
+    j.watches.forEach((wa) => {
+      if (!wa.fresh?.length) return;
+      w.appendChild(el('h2', 'sub', 'تازه در «' + wa.label + '»'));
+      wa.fresh.forEach((r) => w.appendChild(resultCard(r, 'تازه')));
+    });
+    return j.newCount;
+  } catch (e) { if (!silent) st.textContent = e.message; return 0; }
+}
+$('#wCheck').onclick = () => checkWatches(false);
+
+/* ───── آوردن مقاله با DOI */
+function doiPreview(d) {
+  const w = $('#doiCard'); w.innerHTML = '';
+  const c = resultCard(d, (d.found_in || []).join(' + '));
+  c.classList.add('found');
+  w.appendChild(c);
+}
+$('#doiGo').onclick = async () => {
+  const st = $('#doiState'), v = $('#doiIn').value.trim();
+  if (!v) { st.textContent = 'یک DOI بنویسید'; return; }
+  st.textContent = 'در حال خواندن از پایگاه‌ها…';
+  $('#doiCard').innerHTML = '';
+  try {
+    const d = await api('/api/scholar/enrich?doi=' + encodeURIComponent(v));
+    st.textContent = 'پیدا شد — بررسی کنید و اگر درست است اضافه کنید.';
+    doiPreview(d);
+  } catch (e) { st.textContent = e.message; }
+};
+$('#doiIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#doiGo').click(); });
+
+/* ───── تکمیل خودکار کتابخانهٔ موجود */
+async function enrichStatus() {
+  try {
+    const s = await api('/api/enrich-status');
+    const left = s.with_doi - Math.min(s.done, s.with_doi);
+    $('#enrichHint').textContent = left > 0
+      ? fa(left) + ' مقالهٔ DOI‌دار هنوز تکمیل نشده. با یک دکمه چکیده، نویسنده‌ها، تعداد استناد و لینک PDF رایگانشان را می‌آورم.'
+      : fa(s.abstracts) + ' چکیده و ' + fa(s.free_pdf) + ' لینک متن کاملِ رایگان آمده. همه تکمیل‌اند.';
+    $('#enrichGo').disabled = left === 0;
+  } catch { /* بی‌خیال */ }
+}
+
+$('#enrichGo').onclick = async () => {
+  const btn = $('#enrichGo'), bar = $('#enrichBar'), hint = $('#enrichHint');
+  btn.disabled = true; bar.hidden = false;
+  let total = 0, ok = 0;
+  try {
+    const s = await api('/api/enrich-status');
+    total = Math.max(1, s.with_doi - s.done);
+    for (let guard = 0; guard < 60; guard++) {
+      const j = await post('/api/enrich-batch', { limit: 6 });
+      ok += j.done.filter((d) => d.ok).length;
+      const pct = Math.round(100 * (total - j.remaining) / total);
+      bar.firstElementChild.style.width = Math.min(100, Math.max(4, pct)) + '%';
+      hint.textContent = fa(total - j.remaining) + ' از ' + fa(total) + ' تکمیل شد…';
+      if (!j.remaining || !j.done.length) break;
+    }
+    hint.textContent = fa(ok) + ' مقاله تکمیل شد.';
+    loadLibrary();
+  } catch (e) { hint.textContent = e.message; }
+  bar.hidden = true;
+  enrichStatus();
+};
+
 /* ───── کتابخانه */
 let onlyNrf2 = false, onlyFiles = false;
 $('#nrfChip').onclick = (e) => {
@@ -349,10 +596,21 @@ function paperCard(r) {
   if (r.nrf2) head.appendChild(el('span', 'tag nrf', 'Nrf2'));
   if (r.source === 'seed-59') head.appendChild(el('span', 'tag', 'کتابخانهٔ پایه'));
   if (r.source === 'file') head.appendChild(el('span', 'tag id', 'از فایل'));
+  if (r.source === 'scholar') head.appendChild(el('span', 'tag id', 'از جست‌وجو'));
+  if (Number.isFinite(r.citations)) head.appendChild(el('span', 'tag', fa(r.citations) + ' استناد'));
+  if (r.oa_url) head.appendChild(el('span', 'tag ok', 'متن کامل رایگان'));
   if (r.filename) head.appendChild(el('span', 'tag', r.filename + (r.pages ? ' · ' + fa(r.pages) + ' صفحه' : '')));
   c.appendChild(head);
   c.appendChild(el('h3', null, r.title));
-  if (r.doi) c.appendChild(el('div', 'doi', r.doi));
+  if (r.authors) c.appendChild(el('div', 'hint', r.authors.split(',').slice(0, 8).join('،')));
+  const meta2 = [r.journal, r.year ? fa(r.year) : '', r.doi].filter(Boolean).join(' · ');
+  if (meta2) c.appendChild(el('div', 'doi', meta2));
+  if (r.abstract) {
+    const d = el('details');
+    d.appendChild(el('summary', null, 'چکیده'));
+    d.appendChild(el('div', 'body', r.abstract));
+    c.appendChild(d);
+  }
   if (r.best_compound) {
     const d = el('details');
     d.appendChild(el('summary', null, 'بهترین ترکیب'));
@@ -367,6 +625,23 @@ function paperCard(r) {
     c.appendChild(dl);
   }
   const row = el('div', 'row');
+  if (r.oa_url) {
+    const a = el('a', 'btn ghost sm', 'متن کامل');
+    a.href = r.oa_url; a.target = '_blank'; a.rel = 'noopener';
+    row.appendChild(a);
+  }
+  if (r.doi) {
+    const a = el('a', 'btn ghost sm', 'صفحهٔ ناشر');
+    a.href = 'https://doi.org/' + r.doi; a.target = '_blank'; a.rel = 'noopener';
+    row.appendChild(a);
+    const en = el('button', 'btn ghost sm', r.abstract ? 'به‌روزرسانی از پایگاه‌ها' : 'تکمیل از پایگاه‌ها');
+    en.onclick = async () => {
+      en.disabled = true; en.textContent = 'در حال خواندن…';
+      try { await post('/api/papers/' + r.id + '/enrich', {}); loadLibrary(); }
+      catch (e) { en.disabled = false; en.textContent = e.message; }
+    };
+    row.appendChild(en);
+  }
   const del = el('button', 'btn danger sm', 'حذف');
   let armed = false;
   del.onclick = async () => {
@@ -416,4 +691,6 @@ async function loadChem() {
   health();
   try { await loadTemplates(); } catch (e) { console.error(e); }
   route();
+  // بررسی بی‌صدای دیده‌بانی‌ها، تا نشانِ «تازه» کنار «کشف مقاله» بنشیند
+  setTimeout(() => checkWatches(true).catch(() => {}), 1500);
 })();
