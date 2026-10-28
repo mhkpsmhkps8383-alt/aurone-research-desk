@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=11';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=11';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=12';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=12';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -187,6 +187,7 @@ function renderQueue() {
     head.appendChild(el('span', 'tag id', it.file.name));
     if (it.rec.pages) head.appendChild(el('span', 'tag', fa(it.rec.pages) + ' صفحه'));
     if (it.state === 'reading') head.appendChild(el('span', 'tag', 'در حال خواندن…'));
+    if (it.ocr) head.appendChild(el('span', 'tag warn', it.ocr));
     if (it.enriched) head.appendChild(el('span', 'tag nrf', 'تکمیل‌شده از ' + it.enriched));
     if (it.summaryKind === 'abstract') head.appendChild(el('span', 'tag ok', 'چکیدهٔ خود مقاله'));
     if (it.summaryKind === 'extract') head.appendChild(el('span', 'tag', 'خلاصهٔ استخراجی'));
@@ -299,7 +300,27 @@ async function addFiles(files) {
     QUEUE.push(it);
     renderQueue();
     try {
-      const { text, pages } = await textFromFile(file);
+      let { text, pages } = await textFromFile(file);
+
+      // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=12');
+      if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
+        it.ocr = 'اسکن تصویری — OCR لازم است';
+        renderQueue();
+        const res = await ocrPdf(await file.arrayBuffer(), {
+          onProgress: (done, total, note) => {
+            it.ocr = 'OCR: ' + note + (total > 1 ? ' (' + fa(Math.round(100 * done / total)) + '٪)' : '');
+            renderQueue();
+          },
+        });
+        text = res.text;
+        pages = res.pages;
+        it.ocr = res.text.length
+          ? 'با OCR خوانده شد — ' + fa(res.ocrPages) + ' صفحه'
+          : 'OCR چیزی نخواند';
+        if (!text.length) throw new Error('حتی با OCR متنی خوانده نشد');
+      }
+
       if (text.length < 40) throw new Error('متنی استخراج نشد — احتمالاً اسکن تصویری است');
       const g = guessMeta(text, file.name);
       // خلاصه را همین‌جا در مرورگر از خود متن می‌سازیم — چه DOI داشته باشد چه نداشته باشد
@@ -402,6 +423,13 @@ function resultCard(r, extra) {
   if (Number.isFinite(r.citations)) head.appendChild(el('span', 'tag', fa(r.citations) + ' استناد'));
   if (r.shared) head.appendChild(el('span', 'tag nrf', fa(r.shared) + ' مقالهٔ شما به آن استناد کرده'));
   if (r.oa_url || r.is_oa) head.appendChild(el('span', 'tag ok', 'متن کامل رایگان'));
+  for (const f of r.flags || []) {
+    const label = FLAG_FA[f];
+    if (!label) continue;
+    const grave = ['retraction', 'withdrawal', 'removal', 'partial_retraction'].includes(f);
+    head.appendChild(el('span', grave ? 'tag danger' : 'tag warn', label));
+  }
+  if (r.sources?.length) head.appendChild(el('span', 'tag id', r.sources.join(' + ')));
   if (extra) head.appendChild(el('span', 'tag', extra));
   c.appendChild(head);
 
@@ -466,23 +494,45 @@ document.querySelectorAll('#dTabs .tab').forEach((t) => {
 });
 
 /* ───── جست‌وجوی آنلاین */
-let sPage = 1;
+let sPage = 1, broadSearch = false;
+const pickedSources = new Set(['openalex', 'europepmc', 'crossref']);
+
+document.querySelectorAll('.chip.src').forEach((b) => {
+  b.onclick = () => {
+    const k = b.dataset.src;
+    if (pickedSources.has(k) && pickedSources.size > 1) pickedSources.delete(k);
+    else pickedSources.add(k);
+    b.setAttribute('aria-pressed', String(pickedSources.has(k)));
+    if ($('#sQ').value.trim()) runSearch(true);
+  };
+});
+$('#broadChip').onclick = (e) => {
+  broadSearch = !broadSearch;
+  e.target.setAttribute('aria-pressed', String(broadSearch));
+  if ($('#sQ').value.trim()) runSearch(true);
+};
+
 async function runSearch(reset = true) {
   const qv = $('#sQ').value.trim();
   if (qv.length < 2) { $('#sState').textContent = 'عبارت را کامل‌تر بنویسید'; return; }
   if (reset) { sPage = 1; $('#sList').innerHTML = ''; }
-  $('#sState').textContent = 'در حال جست‌وجو…';
+  $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const p = new URLSearchParams({ q: qv, page: sPage });
-    if ($('#sYear').value) p.set('years', $('#sYear').value);
-    const j = await api('/api/scholar/search?' + p);
-    $('#sState').textContent = j.total
-      ? fa(j.total.toLocaleString('en-US')) + ' نتیجه — پراستنادترین‌ها اول'
-      : 'نتیجه‌ای نبود';
+    const { searchAll } = await import('/sources.js?v=12');
+    const j = await searchAll(qv, {
+      page: sPage, years: $('#sYear').value || '', broad: broadSearch,
+      use: [...pickedSources],
+    });
+    const per = Object.entries(j.counts).map(([k, v]) => k + ' ' + fa(v)).join(' · ');
+    const dupes = j.raw - j.results.length;
+    $('#sState').textContent = j.results.length
+      ? fa(j.results.length) + ' نتیجهٔ یکتا' + (dupes > 0 ? ' (' + fa(dupes) + ' تکراری ادغام شد)' : '') +
+        (per ? ' — ' + per : '') + (j.errors.length ? ' · ' + j.errors.join('، ') : '')
+      : (j.errors.length ? j.errors.join('، ') : 'نتیجه‌ای نبود');
     const w = $('#sList');
     j.results.forEach((r) => w.appendChild(resultCard(r)));
-    $('#sMore').hidden = !(j.results.length === 25);
+    $('#sMore').hidden = j.results.length < 12;
   } catch (e) { $('#sState').textContent = e.message; }
 }
 $('#sGo').onclick = () => runSearch(true);
@@ -632,7 +682,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=11');
+    const pc = await import('/pubchem.js?v=12');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
