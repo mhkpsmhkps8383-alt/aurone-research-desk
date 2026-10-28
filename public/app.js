@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=17';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=17';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=18';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=18';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -296,7 +296,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=17');
+    const { extractFigures } = await import('/figures.js?v=18');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -333,7 +333,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=17');
+  const { toCompact } = await import('/figures.js?v=18');
   let done = 0;
   for (const f of picks) {
     try {
@@ -381,7 +381,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=17');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=18');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -462,6 +462,90 @@ $('#saveAll').onclick = async () => {
   for (const it of QUEUE.filter((x) => x.state === 'ready')) if (await saveOne(it)) n++;
   btn.disabled = false;
   st.textContent = n ? fa(n) + ' مقاله به کتابخانه اضافه شد' : 'چیزی برای ذخیره نبود';
+};
+
+/* ───── وارد کردن خروجی پایگاه‌های دیگر (Reaxys، EndNote، …) */
+let IMPORTED = [];
+
+$('#impPick').onclick = () => $('#impIn').click();
+$('#impIn').onchange = async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+  const st = $('#impState');
+  st.textContent = 'در حال خواندن…';
+  IMPORTED = [];
+  const kinds = [];
+  try {
+    const imp = await import('/import.js?v=18');
+    for (const f of files) {
+      try {
+        const { kind, records } = await imp.parseFile(f);
+        kinds.push(f.name + ' → ' + kind + ' (' + fa(records.length) + ')');
+        IMPORTED.push(...records);
+      } catch (err) { kinds.push(f.name + ' → ' + err.message); }
+    }
+    // منابع تکراری را یکی می‌کنیم
+    const seen = new Set();
+    IMPORTED = IMPORTED.filter((r) => {
+      const k = (r.doi || r.title).toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    st.textContent = kinds.join(' · ') + ' — ' + fa(IMPORTED.length) + ' منبع یکتا';
+    renderImport();
+  } catch (err) { st.textContent = err.message; }
+};
+
+function renderImport() {
+  const w = $('#impPreview');
+  w.innerHTML = '';
+  $('#impBar').hidden = !IMPORTED.length;
+  if (!IMPORTED.length) return;
+  const wrap = el('div', 'tw');
+  const table = el('table');
+  const htr = el('tr');
+  ['', 'عنوان', 'مجله', 'سال', 'DOI'].forEach((h) => htr.appendChild(el('th', null, h)));
+  const thead = el('thead'); thead.appendChild(htr); table.appendChild(thead);
+  const tb = el('tbody');
+  IMPORTED.slice(0, 200).forEach((r, i) => {
+    const tr = el('tr');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = r.pick !== false;
+    cb.onchange = () => { r.pick = cb.checked; };
+    const td0 = el('td'); td0.appendChild(cb); tr.appendChild(td0);
+    tr.appendChild(el('td', null, r.title || '—'));
+    tr.appendChild(el('td', null, r.journal || '—'));
+    tr.appendChild(el('td', 'n', r.year ? fa(r.year) : '—'));
+    tr.appendChild(el('td', null, r.doi || '—'));
+    tb.appendChild(tr);
+  });
+  table.appendChild(tb);
+  wrap.appendChild(table);
+  w.appendChild(wrap);
+  if (IMPORTED.length > 200) w.appendChild(el('div', 'hint', 'نمایش ۲۰۰ مورد اول؛ همه ذخیره می‌شوند.'));
+}
+
+$('#impSave').onclick = async () => {
+  const btn = $('#impSave'), st = $('#impState');
+  const picks = IMPORTED.filter((r) => r.pick !== false);
+  if (!picks.length) { st.textContent = 'موردی انتخاب نشده'; return; }
+  btn.disabled = true;
+  const tag = $('#impTag').value.trim() || null;
+  let n = 0;
+  for (const r of picks) {
+    try {
+      await post('/api/papers', { ...r, tag: tag || r.tag, source: 'import' });
+      n++;
+      if (n % 5 === 0) st.textContent = fa(n) + ' از ' + fa(picks.length) + ' اضافه شد…';
+    } catch { /* یکی نشد، بقیه ادامه */ }
+  }
+  st.textContent = fa(n) + ' منبع به کتابخانه اضافه شد';
+  IMPORTED = [];
+  renderImport();
+  btn.disabled = false;
+  health();
 };
 
 /* ───── افزودن دستی */
@@ -597,7 +681,7 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=17');
+    const { searchAll } = await import('/sources.js?v=18');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
       use: [...pickedSources],
@@ -760,7 +844,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=17');
+    const ex = await import('/extract.js?v=18');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -877,7 +961,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=17');
+    const pc = await import('/pubchem.js?v=18');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1028,7 +1112,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=17');
+    const cl = await import('/chembl.js?v=18');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1067,7 +1151,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=17');
+    const cl = await import('/chembl.js?v=18');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 

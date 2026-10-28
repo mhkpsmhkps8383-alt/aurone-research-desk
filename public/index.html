@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=17">
+<link rel="stylesheet" href="/style.css?v=18">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -100,6 +100,23 @@
   <span class="hint" id="qState"></span>
 
   <div id="queue" class="stack"></div>
+
+  <h2 class="sub">یا خروجی پایگاه دیگری را وارد کنید</h2>
+  <div class="panel">
+    <p class="hint" style="margin-top:0">خروجی Reaxys، EndNote، Zotero، Scopus یا هر فهرست منابعی در قالب RIS، BibTeX، CSV یا Excel. ستون‌ها خودکار شناسایی می‌شوند و پیش از ذخیره می‌توانید ببینیدشان.</p>
+    <div class="row">
+      <button class="btn" id="impPick" type="button">انتخاب فایل منابع</button>
+      <input type="file" id="impIn" accept=".ris,.bib,.bibtex,.nbib,.csv,.tsv,.xlsx,.xls,.txt" multiple hidden>
+      <span class="hint" id="impState"></span>
+    </div>
+    <div id="impPreview"></div>
+    <div class="row" id="impBar" hidden style="margin-top:12px">
+      <label class="fld">دسته برای همه<input id="impTag" placeholder="اختیاری"></label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="impSave">افزودن همه به کتابخانه</button>
+      </div>
+    </div>
+  </div>
 
   <h2 class="sub">یا بدون فایل، دستی وارد کنید</h2>
   <div class="panel">
@@ -411,7 +428,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=17"></script>
+<script type="module" src="/app.js?v=18"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
