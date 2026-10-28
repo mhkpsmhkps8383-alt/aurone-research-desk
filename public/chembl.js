@@ -107,13 +107,22 @@ export async function activitiesOf(chemblId, { limit = 60, onlyPotency = true } 
 
 /** جست‌وجوی هدف زیستی: آنزیم یا گیرنده. */
 export async function findTargets(query, limit = 8) {
+  const qv = String(query || '').trim().toLowerCase();
   const j = await get(`/target/search?q=${encodeURIComponent(query)}&format=json&limit=${limit}`);
-  return (j.targets || []).map((t) => ({
+  const rows = (j.targets || []).map((t) => ({
     id: t.target_chembl_id,
-    name: t.pref_name,
-    organism: t.organism,
-    kind: t.target_type,
+    name: t.pref_name || '',
+    organism: t.organism || '',
+    kind: t.target_type || '',
   }));
+  // ChEMBL گاهی آنزیم حشره را اول می‌آورد؛ هدفِ انسانی با نام دقیق مفیدتر است
+  const score = (t) => {
+    const n = t.name.toLowerCase();
+    return (n === qv ? 4 : n.includes(qv) ? 2 : 0)
+      + (/homo sapiens/i.test(t.organism) ? 3 : 0)
+      + (t.kind === 'SINGLE PROTEIN' ? 1 : 0);
+  };
+  return rows.sort((a, b) => score(b) - score(a));
 }
 
 /**

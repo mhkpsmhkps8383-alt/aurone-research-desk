@@ -1,5 +1,5 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=16';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=16';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=17';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=17';
 
 /** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
 const FLAG_FA = {
@@ -296,7 +296,7 @@ async function uploadText(id, text, it) {
 async function pullFigures(it, btn) {
   btn.disabled = true;
   try {
-    const { extractFigures } = await import('/figures.js?v=16');
+    const { extractFigures } = await import('/figures.js?v=17');
     const figs = await extractFigures(await it.file.arrayBuffer(), {
       onProgress: (n, total) => { btn.textContent = 'صفحهٔ ' + fa(n) + ' از ' + fa(total) + '…'; },
     });
@@ -333,7 +333,7 @@ function figureGallery(it) {
 async function uploadFigures(id, it) {
   const picks = (it.figs || []).filter((f) => f.pick);
   if (!picks.length) return;
-  const { toCompact } = await import('/figures.js?v=16');
+  const { toCompact } = await import('/figures.js?v=17');
   let done = 0;
   for (const f of picks) {
     try {
@@ -381,7 +381,7 @@ async function addFiles(files) {
       let { text, pages } = await textFromFile(file);
 
       // PDF اسکنی متن ندارد؛ با OCR داخل همین مرورگر می‌خوانیمش
-      const { looksScanned, ocrPdf } = await import('/ocr.js?v=16');
+      const { looksScanned, ocrPdf } = await import('/ocr.js?v=17');
       if (/\.pdf$/i.test(file.name) && looksScanned(text, pages)) {
         it.ocr = 'اسکن تصویری — OCR لازم است';
         renderQueue();
@@ -597,7 +597,7 @@ async function runSearch(reset = true) {
   $('#sState').textContent = 'در حال پرسیدن از ' + fa(pickedSources.size) + ' پایگاه…';
   $('#sMore').hidden = true;
   try {
-    const { searchAll } = await import('/sources.js?v=16');
+    const { searchAll } = await import('/sources.js?v=17');
     const j = await searchAll(qv, {
       page: sPage, years: $('#sYear').value || '', broad: broadSearch,
       use: [...pickedSources],
@@ -760,7 +760,7 @@ async function buildMatrix() {
   st.textContent = 'در حال ساختن…';
   wrap.innerHTML = '';
   try {
-    const ex = await import('/extract.js?v=16');
+    const ex = await import('/extract.js?v=17');
     const p = new URLSearchParams();
     if ($('#mxQ').value.trim()) p.set('search', $('#mxQ').value.trim());
     const rows = await api('/api/papers?' + p);
@@ -877,7 +877,7 @@ async function pcLookup(qv) {
   st.textContent = 'در حال خواندن از PubChem…';
   w.innerHTML = '';
   try {
-    const pc = await import('/pubchem.js?v=16');
+    const pc = await import('/pubchem.js?v=17');
     const c = await pc.lookup(qv);
     const card = el('div', 'card found');
 
@@ -1028,7 +1028,7 @@ $('#clGo').onclick = async () => {
   st.textContent = 'در حال خواندن از ChEMBL…';
   out.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=16');
+    const cl = await import('/chembl.js?v=17');
     const mol = await cl.findMolecule($('#clQ').value);
     const { total, rows } = await cl.activitiesOf(mol.id);
 
@@ -1067,7 +1067,7 @@ $('#clTGo').onclick = async () => {
   st.textContent = 'در حال یافتن هدف…';
   out.innerHTML = ''; picks.innerHTML = '';
   try {
-    const cl = await import('/chembl.js?v=16');
+    const cl = await import('/chembl.js?v=17');
     const targets = await cl.findTargets($('#clT').value);
     if (!targets.length) { st.textContent = 'هدفی با این نام پیدا نشد'; return; }
 
