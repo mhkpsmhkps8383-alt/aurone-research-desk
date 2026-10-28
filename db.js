@@ -97,7 +97,7 @@ export async function ensureSchema() {
   for (const [col, type] of [
     ['abstract', 'text'], ['citations', 'int'], ['oa_url', 'text'],
     ['pmid', 'text'], ['pmcid', 'text'], ['openalex_id', 'text'],
-    ['enriched_at', 'timestamptz'],
+    ['enriched_at', 'timestamptz'], ['flags', 'jsonb'],
   ]) await q(`ALTER TABLE papers ADD COLUMN IF NOT EXISTS ${col} ${type}`);
   await q(`CREATE TABLE IF NOT EXISTS watches (
      id bigserial PRIMARY KEY, label text NOT NULL, query text NOT NULL,

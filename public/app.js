@@ -1,5 +1,13 @@
-import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=7';
-import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=10';
+import { recommend as oaRecommend, citedBy as oaCitedBy } from '/openalex.js?v=11';
+import { bestSummary, summarize, keywords as kwOf } from '/summarize.js?v=11';
+
+/** برچسب فارسی وضعیت‌هایی که Crossref گزارش می‌کند (بازپس‌گیری، اصلاحیه و …). */
+const FLAG_FA = {
+  retraction: 'بازپس‌گرفته شده', expression_of_concern: 'ابراز نگرانی',
+  correction: 'اصلاحیه خورده', corrigendum: 'اصلاحیه خورده', erratum: 'اصلاحیه خورده',
+  withdrawal: 'پس گرفته شده', removal: 'حذف شده',
+  partial_retraction: 'بازپس‌گیری جزئی', new_edition: 'ویرایش تازه دارد',
+};
 
 const $ = (s) => document.querySelector(s);
 const el = (t, c, x) => { const n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -616,8 +624,87 @@ $('#enrichGo').onclick = async () => {
   enrichStatus();
 };
 
+/* ───── جست‌وجوی ترکیب در PubChem */
+const FA_NUM = (v, d = 2) => (v == null ? '—' : fa(Number(v).toFixed(d).replace(/\.?0+$/, '')));
+
+async function pcLookup(qv) {
+  const st = $('#pcState'), w = $('#pcCard');
+  st.textContent = 'در حال خواندن از PubChem…';
+  w.innerHTML = '';
+  try {
+    const pc = await import('/pubchem.js?v=11');
+    const c = await pc.lookup(qv);
+    const card = el('div', 'card found');
+
+    const head = el('div', 'tags');
+    head.appendChild(el('span', 'tag id', 'CID ' + fa(c.cid)));
+    if (c.formula) head.appendChild(el('span', 'tag', c.formula));
+    head.appendChild(el('span', c.drugLike ? 'tag ok' : 'tag no',
+      c.drugLike ? 'دارومانند' : fa(c.lipinskiViolations) + ' نقض لیپینسکی'));
+    card.appendChild(head);
+    card.appendChild(el('h3', null, c.name));
+    if (c.synonyms.length > 1) card.appendChild(el('div', 'hint', c.synonyms.slice(1).join('، ')));
+
+    const split = el('div', 'molRow');
+    const img = document.createElement('img');
+    img.className = 'mol'; img.src = c.image; img.alt = 'ساختار ' + c.name;
+    img.loading = 'lazy';
+    split.appendChild(img);
+
+    const dl = el('dl', 'kv grow');
+    [['جرم مولکولی', FA_NUM(c.mw)], ['logP', FA_NUM(c.logp)], ['TPSA', FA_NUM(c.tpsa, 1)],
+     ['دهندهٔ پیوند هیدروژنی', fa(c.hbd)], ['گیرندهٔ پیوند هیدروژنی', fa(c.hba)],
+     ['پیوند چرخان', fa(c.rotb)], ['اتم سنگین', fa(c.heavy)], ['InChIKey', c.inchikey || '—']]
+      .forEach(([k, v]) => { dl.appendChild(el('dt', null, k)); dl.appendChild(el('dd', null, String(v))); });
+    split.appendChild(dl);
+    card.appendChild(split);
+
+    if (c.smiles) card.appendChild(el('div', 'doi', c.smiles));
+
+    const row = el('div', 'row');
+    const a = el('a', 'btn ghost sm', 'صفحهٔ PubChem');
+    a.href = c.page; a.target = '_blank'; a.rel = 'noopener';
+    row.appendChild(a);
+    if (c.smiles) {
+      const sim = el('button', 'btn ghost sm', 'ترکیب‌های مشابه');
+      sim.onclick = async () => {
+        sim.disabled = true; sim.textContent = 'در حال جست‌وجو…';
+        try {
+          const list = await pc.similar(c.smiles, 12);
+          sim.remove();
+          const box = el('div', 'simGrid');
+          list.forEach((s) => {
+            const a2 = el('a', 'simCell');
+            a2.href = s.page; a2.target = '_blank'; a2.rel = 'noopener';
+            const im = document.createElement('img');
+            im.src = s.image; im.alt = s.formula; im.loading = 'lazy';
+            a2.appendChild(im);
+            a2.appendChild(el('span', null, s.formula));
+            box.appendChild(a2);
+          });
+          card.appendChild(box);
+        } catch (e) { sim.disabled = false; sim.textContent = e.message; }
+      };
+      row.appendChild(sim);
+    }
+    card.appendChild(row);
+    w.appendChild(card);
+    st.textContent = '';
+  } catch (e) { st.textContent = e.message; }
+}
+$('#pcGo').onclick = () => pcLookup($('#pcQ').value);
+$('#pcQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') pcLookup($('#pcQ').value); });
+document.querySelectorAll('.chip.pcEx').forEach((b) => {
+  b.onclick = () => { $('#pcQ').value = b.textContent; pcLookup(b.textContent); };
+});
+
 /* ───── کتابخانه */
-let onlyNrf2 = false, onlyFiles = false;
+let onlyNrf2 = false, onlyFiles = false, deepSearch = false;
+$('#deepChip').onclick = (e) => {
+  deepSearch = !deepSearch;
+  e.target.setAttribute('aria-pressed', String(deepSearch));
+  loadLibrary();
+};
 $('#nrfChip').onclick = (e) => {
   onlyNrf2 = !onlyNrf2;
   e.target.setAttribute('aria-pressed', String(onlyNrf2));
@@ -639,6 +726,7 @@ async function loadLibrary() {
     if ($('#aoSel').value) p.set('ao', $('#aoSel').value);
     if (onlyNrf2) p.set('nrf2', '1');
     if (onlyFiles) p.set('files', '1');
+    if (deepSearch && $('#qLib').value.trim()) p.set('deep', '1');
     const rows = await api('/api/papers?' + p);
     $('#libCount').textContent = fa(rows.length) + ' مقاله';
     const w = $('#libList'); w.innerHTML = '';
@@ -658,6 +746,12 @@ function paperCard(r) {
   if (r.source === 'seed-59') head.appendChild(el('span', 'tag', 'کتابخانهٔ پایه'));
   if (r.source === 'file') head.appendChild(el('span', 'tag id', 'از فایل'));
   if (r.source === 'scholar') head.appendChild(el('span', 'tag id', 'از جست‌وجو'));
+  for (const f of r.flags || []) {
+    const label = FLAG_FA[f];
+    if (!label) continue;
+    const grave = f === 'retraction' || f === 'withdrawal' || f === 'removal' || f === 'partial_retraction';
+    head.appendChild(el('span', grave ? 'tag danger' : 'tag warn', label));
+  }
   if (Number.isFinite(r.citations)) head.appendChild(el('span', 'tag', fa(r.citations) + ' استناد'));
   if (r.oa_url) head.appendChild(el('span', 'tag ok', 'متن کامل رایگان'));
   if (r.filename) head.appendChild(el('span', 'tag', r.filename + (r.pages ? ' · ' + fa(r.pages) + ' صفحه' : '')));
@@ -666,6 +760,16 @@ function paperCard(r) {
   if (r.authors) c.appendChild(el('div', 'hint', r.authors.split(',').slice(0, 8).join('،')));
   const meta2 = [r.journal, r.year ? fa(r.year) : '', r.doi].filter(Boolean).join(' · ');
   if (meta2) c.appendChild(el('div', 'doi', meta2));
+  if (r.flags?.includes('retraction')) {
+    c.appendChild(el('div', 'alert',
+      'این مقاله پس از انتشار بازپس‌گرفته شده است. به آن استناد نکنید مگر اینکه موضوعِ بحثتان خودِ همین بازپس‌گیری باشد.'));
+  }
+  if (r.snippet) {
+    const d = el('div', 'snippet');
+    d.appendChild(el('span', 'hint', 'در متن مقاله: '));
+    d.appendChild(document.createTextNode('…' + r.snippet.replace(/\s+/g, ' ').trim() + '…'));
+    c.appendChild(d);
+  }
   if (r.abstract) {
     const d = el('details');
     d.appendChild(el('summary', null, 'چکیده'));

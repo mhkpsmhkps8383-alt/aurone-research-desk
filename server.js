@@ -60,19 +60,32 @@ app.delete('/api/templates/:key', async (req, res) => {
 // ───────── کتابخانه
 app.get('/api/papers', async (req, res) => {
   const { search = '', tag = '', ao = '', nrf2 = '' } = req.query;
+  // deep=1 یعنی داخل متنِ کاملِ مقاله‌ها هم بگرد، نه فقط عنوان و خلاصه
+  const deep = req.query.deep === '1' && Boolean(search);
   const where = [], params = [];
+  let snippet = '';
   if (search) {
     params.push('%' + search + '%');
-    where.push(`(title ILIKE $${params.length} OR doi ILIKE $${params.length}
-      OR summary ILIKE $${params.length} OR best_compound ILIKE $${params.length}
-      OR fields::text ILIKE $${params.length})`);
+    const p = params.length;
+    where.push(`(title ILIKE $${p} OR doi ILIKE $${p} OR authors ILIKE $${p}
+      OR summary ILIKE $${p} OR abstract ILIKE $${p} OR best_compound ILIKE $${p}
+      OR fields::text ILIKE $${p}${deep ? ` OR raw_text ILIKE $${p}` : ''})`);
+    if (deep) {
+      // تکه‌ای از متن دور و برِ جایی که عبارت پیدا شده، برای نمایش در نتیجه
+      params.push(search);
+      const t = params.length;
+      snippet = `CASE WHEN raw_text IS NOT NULL AND position(lower($${t}) in lower(raw_text)) > 0
+        THEN substring(raw_text from greatest(1, position(lower($${t}) in lower(raw_text)) - 160) for 420)
+        ELSE NULL END AS snippet`;
+    }
   }
   if (tag) { params.push(tag); where.push(`tag = $${params.length}`); }
   if (ao) { params.push(ao); where.push(`antioxidant = $${params.length}`); }
   if (nrf2 === '1') where.push('nrf2 = true');
   if (req.query.files === '1') where.push("source = 'file'");
   const sql = `SELECT id,doi,title,journal,year,authors,tag,template,fields,best_compound,
-    antioxidant,nrf2,summary,note,source,filename,pages,created_at FROM papers
+    antioxidant,nrf2,summary,note,source,filename,pages,created_at,
+    abstract,citations,oa_url,flags${deep ? ', ' + snippet : ''} FROM papers
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY created_at DESC, id DESC`;
   const { rows } = await q(sql, params);
   res.json(rows);
@@ -150,7 +163,7 @@ const ENRICH_COLS = `title=COALESCE(NULLIF($2,''),title), journal=COALESCE(NULLI
   abstract=COALESCE(NULLIF($6,''),abstract), citations=$7,
   oa_url=COALESCE(NULLIF($8,''),oa_url), pmid=COALESCE(NULLIF($9,''),pmid),
   pmcid=COALESCE(NULLIF($10,''),pmcid), openalex_id=COALESCE(NULLIF($11,''),openalex_id),
-  enriched_at=now(), updated_at=now()`;
+  flags=$12, enriched_at=now(), updated_at=now()`;
 
 async function enrichRow(row) {
   const d = await enrichDoi(row.doi);
@@ -162,8 +175,10 @@ async function enrichRow(row) {
     row.id, d.title || '', d.journal || '', d.year || null, d.authors || '',
     d.abstract || '', Number.isFinite(d.citations) ? d.citations : null,
     d.oa_url || '', d.pmid || '', d.pmcid || '', d.openalex_id || '',
+    JSON.stringify(d.flags || []),
   ]);
-  return { id: row.id, ok: true, citations: d.citations ?? null, oa: Boolean(d.oa_url) };
+  return { id: row.id, ok: true, citations: d.citations ?? null, oa: Boolean(d.oa_url),
+    flags: d.flags || [] };
 }
 
 // غنی‌سازی یک مقالهٔ ذخیره‌شده

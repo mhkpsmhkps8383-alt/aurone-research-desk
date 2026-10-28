@@ -1,12 +1,13 @@
 // سرویس‌ورکر سبک: پوستهٔ برنامه کش می‌شود تا آیکون و صفحه آفلاین هم بالا بیاید.
 // داده‌ها (/api/…) هیچ‌وقت کش نمی‌شوند.
-const CACHE = 'assistant-v10';
+const CACHE = 'assistant-v11';
 const SHELL = [
   '/',
-  '/style.css?v=10',
-  '/app.js?v=10',
-  '/summarize.js?v=10',
-  '/openalex.js?v=7',
+  '/style.css?v=11',
+  '/app.js?v=11',
+  '/summarize.js?v=11',
+  '/openalex.js?v=11',
+  '/pubchem.js?v=11',
   '/manifest.webmanifest',
   '/icon.svg',
   '/icon-192.png',

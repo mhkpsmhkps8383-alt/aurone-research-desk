@@ -85,8 +85,23 @@ function fromCrossref(m) {
     year: m.issued?.['date-parts']?.[0]?.[0] || null,
     abstract: m.abstract ? m.abstract.replace(/<[^>]+>/g, '').trim() : null,
     type: m.type || null,
+    // Crossref می‌گوید این مقاله بعداً پس گرفته یا اصلاح شده یا نه
+    flags: [...new Set((m['updated-by'] || []).map((u) => u.type).filter(Boolean))],
   };
 }
+
+/** برچسب فارسی برای وضعیت‌هایی که Crossref گزارش می‌کند. */
+export const FLAG_FA = {
+  retraction: 'بازپس‌گرفته شده',
+  expression_of_concern: 'ابراز نگرانی',
+  correction: 'اصلاحیه خورده',
+  corrigendum: 'اصلاحیه خورده',
+  erratum: 'اصلاحیه خورده',
+  withdrawal: 'پس گرفته شده',
+  removal: 'حذف شده',
+  partial_retraction: 'بازپس‌گیری جزئی',
+  new_edition: 'ویرایش تازه دارد',
+};
 
 /** هر فیلدی که هنوز خالی است را از منبع بعدی پر می‌کند. */
 function merge(...parts) {

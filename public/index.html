@@ -26,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="/style.css?v=10">
+<link rel="stylesheet" href="/style.css?v=11">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
@@ -217,6 +217,7 @@
         </select>
       </label>
       <div class="fld" style="justify-content:flex-end">
+        <button class="chip" id="deepChip" aria-pressed="false" title="داخل متن کامل مقاله‌ها هم بگرد">در متن مقاله‌ها</button>
         <button class="chip" id="nrfChip" aria-pressed="false">فقط Nrf2</button>
         <button class="chip" id="fileChip" aria-pressed="false">فقط فایل‌های خودم</button>
       </div>
@@ -274,7 +275,27 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
 <!-- ═══ ترکیبات ═══ -->
 <section id="v-chem" hidden>
   <h1 class="neon">ترکیبات و محاسبات</h1>
-  <p class="lede">کتابخانهٔ ۲۱۶ آنالوگ با دیسکریپتورهای محاسبه‌شده، و نتایج DFT روی سری اورون‌های طبیعی.</p>
+  <p class="lede">جست‌وجوی ترکیب در PubChem، کتابخانهٔ ۲۱۶ آنالوگ با دیسکریپتورهای محاسبه‌شده، و نتایج DFT روی سری اورون‌های طبیعی.</p>
+
+  <div class="panel glow">
+    <div class="row">
+      <label class="fld grow">نام ترکیب یا SMILES
+        <input id="pcQ" placeholder="sulfuretin  ·  aureusidin  ·  O=C1c2ccccc2OC1=Cc1ccc(O)c(O)c1">
+      </label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="btn primary" id="pcGo">بیاورش</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+      <span class="hint">نمونه:</span>
+      <button class="chip sm pcEx">sulfuretin</button>
+      <button class="chip sm pcEx">aureusidin</button>
+      <button class="chip sm pcEx">maritimetin</button>
+      <button class="chip sm pcEx">quercetin</button>
+    </div>
+    <span class="hint" id="pcState"></span>
+    <div id="pcCard"></div>
+  </div>
 
   <div class="panel">
     <div class="row">
@@ -310,7 +331,7 @@ dose | دوز | مقدار و مسیر تجویز"></textarea>
   دستیار هوشمند · دیتابیس روی Neon · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
 </footer>
 
-<script type="module" src="/app.js?v=10"></script>
+<script type="module" src="/app.js?v=11"></script>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
