@@ -1,0 +1,187 @@
+/* میز پژوهش — تم نئونی تیره، RTL */
+:root{
+  --bg:#06070e;
+  --panel:#0d1020;
+  --panel-2:#11152a;
+  --edge:#20264a;
+  --ink:#e9ecff;
+  --ink-2:#a3abd6;
+  --ink-3:#6f78a8;
+  --cyan:#2ff3ff;
+  --magenta:#ff3ea5;
+  --lime:#9dff3c;
+  --amber:#ffc24b;
+  --red:#ff5a6e;
+  --sans:'Vazirmatn',Tahoma,system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.85;-webkit-font-smoothing:antialiased;
+  min-height:100vh;position:relative;overflow-x:hidden;
+}
+.grid-bg{
+  position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(47,243,255,.13), transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(255,62,165,.10), transparent 60%),
+    linear-gradient(rgba(47,243,255,.035) 1px, transparent 1px) 0 0/100% 46px,
+    linear-gradient(90deg, rgba(47,243,255,.035) 1px, transparent 1px) 0 0/46px 100%;
+}
+.wrap{
+  max-width:1120px;margin:0 auto;position:relative;z-index:1;
+  padding-left:max(18px,env(safe-area-inset-left,0px));
+  padding-right:max(18px,env(safe-area-inset-right,0px));
+}
+h1,h2,h3{margin:0;line-height:1.45;text-wrap:balance}
+a{color:var(--cyan);text-decoration:none}
+code{font-family:var(--mono);font-size:.88em;color:var(--lime)}
+.spacer{flex:1}
+.n,.mono{font-family:var(--mono);direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+
+/* ── سربرگ */
+header{
+  position:sticky;top:0;z-index:10;
+  background:rgba(6,7,14,.82);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--edge);
+}
+.hrow{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:12px}
+.brand{display:flex;align-items:center;gap:11px;color:var(--ink)}
+.brand b{display:block;font-size:17px;font-weight:800;letter-spacing:-.2px}
+.brand em{display:block;font-style:normal;font-size:11.5px;color:var(--ink-3)}
+.orb{
+  width:26px;height:26px;border-radius:50%;flex:0 0 auto;
+  background:radial-gradient(circle at 34% 30%, #bffaff, var(--cyan) 55%, #0a5a66);
+  box-shadow:0 0 14px rgba(47,243,255,.75), 0 0 34px rgba(47,243,255,.35);
+}
+nav{display:flex;gap:4px;flex-wrap:wrap;margin-inline-start:auto}
+nav a{
+  padding:6px 13px;border-radius:999px;font-size:14px;font-weight:500;
+  color:var(--ink-2);border:1px solid transparent;
+}
+nav a:hover{background:var(--panel-2);color:var(--ink)}
+nav a[aria-current="page"]{
+  color:var(--cyan);border-color:rgba(47,243,255,.5);
+  background:rgba(47,243,255,.08);box-shadow:0 0 12px rgba(47,243,255,.22) inset;
+}
+.status{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  border:1px solid var(--edge);border-radius:999px;padding:3px 10px;white-space:nowrap;
+}
+.status.ok{color:var(--lime);border-color:rgba(157,255,60,.4)}
+.status.warn{color:var(--amber);border-color:rgba(255,194,75,.4)}
+
+main{padding-block:28px 60px}
+section[hidden]{display:none!important}
+
+h1.neon{
+  font-size:30px;font-weight:800;letter-spacing:-.5px;
+  color:#fff;text-shadow:0 0 18px rgba(47,243,255,.45), 0 0 46px rgba(47,243,255,.18);
+}
+h2.sub{font-size:19px;font-weight:700;margin:28px 0 12px;color:var(--ink)}
+.lede{color:var(--ink-2);max-width:70ch;margin:8px 0 22px;font-size:14.5px}
+.hint{color:var(--ink-3);font-size:12.5px}
+
+/* ── پنل و کنترل */
+.panel{
+  background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  border:1px solid var(--edge);border-radius:14px;padding:18px;
+  box-shadow:0 0 0 1px rgba(47,243,255,.04), 0 18px 50px -28px rgba(47,243,255,.3);
+}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--ink-3);
+  font-weight:600;min-width:0;flex:1 1 200px}
+.fld.grow{flex:3 1 280px}
+input,select,textarea{
+  font-family:var(--sans);font-size:14px;color:var(--ink);
+  background:#080a16;border:1px solid var(--edge);border-radius:10px;
+  padding:10px 12px;width:100%;transition:border-color .15s, box-shadow .15s;
+}
+textarea{resize:vertical;line-height:1.8}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px rgba(47,243,255,.14);
+}
+.btn{
+  font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;
+  padding:10px 20px;border-radius:10px;border:1px solid var(--edge);
+  background:var(--panel-2);color:var(--ink);transition:.15s;
+}
+.btn:hover{border-color:var(--ink-3)}
+.btn.sm{padding:6px 13px;font-size:12.5px;font-weight:600}
+.btn.primary{
+  background:linear-gradient(135deg,rgba(47,243,255,.2),rgba(255,62,165,.18));
+  border-color:var(--cyan);color:#eafdff;box-shadow:0 0 18px rgba(47,243,255,.25);
+}
+.btn.primary:hover{box-shadow:0 0 26px rgba(47,243,255,.42)}
+.btn.ghost{background:transparent;color:var(--ink-2)}
+.btn.danger{background:transparent;border-color:rgba(255,90,110,.45);color:var(--red)}
+.btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.chip{
+  font-family:var(--sans);font-size:12.5px;font-weight:600;cursor:pointer;
+  padding:7px 14px;border-radius:999px;border:1px solid var(--edge);
+  background:transparent;color:var(--ink-2);
+}
+.chip[aria-pressed="true"]{
+  color:var(--magenta);border-color:rgba(255,62,165,.6);
+  background:rgba(255,62,165,.1);box-shadow:0 0 12px rgba(255,62,165,.2);
+}
+:is(button,a,input,select,textarea):focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* ── کارت‌ها */
+.stack{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.card{
+  background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px 18px;
+  display:flex;flex-direction:column;gap:9px;
+}
+.card h3{font-size:15.5px;font-weight:700}
+.doi{font-family:var(--mono);font-size:11px;color:var(--ink-3);direction:ltr;text-align:right;word-break:break-all}
+.card .body{font-size:13.5px;color:var(--ink-2);white-space:pre-line}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tag{font-size:11px;padding:2px 10px;border-radius:999px;border:1px solid var(--edge);color:var(--ink-3);white-space:nowrap}
+.tag.ok{color:var(--lime);border-color:rgba(157,255,60,.45);background:rgba(157,255,60,.07)}
+.tag.no{color:var(--red);border-color:rgba(255,90,110,.45);background:rgba(255,90,110,.07)}
+.tag.nrf{color:var(--magenta);border-color:rgba(255,62,165,.55);background:rgba(255,62,165,.1);font-weight:700}
+.tag.id{font-family:var(--mono);color:var(--cyan);border-color:rgba(47,243,255,.4)}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;margin:0}
+.kv dt{color:var(--ink-3);white-space:nowrap}
+.kv dd{margin:0;color:var(--ink)}
+
+.answer{
+  margin-top:18px;background:var(--panel);border:1px solid rgba(47,243,255,.3);
+  border-radius:14px;padding:18px 20px;white-space:pre-wrap;font-size:14.5px;
+  box-shadow:0 0 30px -12px rgba(47,243,255,.35);
+}
+.answer .ref{color:var(--cyan);font-family:var(--mono);font-size:.9em}
+
+.note{border-right:3px solid var(--amber);background:rgba(255,194,75,.07);
+  border-radius:0 10px 10px 0;padding:11px 15px;font-size:13.5px;color:var(--ink-2)}
+.note.err{border-right-color:var(--red);background:rgba(255,90,110,.08)}
+
+/* ── جدول */
+.tw{overflow-x:auto;border:1px solid var(--edge);border-radius:13px;background:var(--panel);margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:560px}
+th{background:#0a0d1c;color:var(--ink-3);font-weight:700;text-align:right;padding:10px;
+  font-size:12px;border-bottom:1px solid var(--edge);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid rgba(32,38,74,.6)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:rgba(47,243,255,.04)}
+td.n,th.n{font-family:var(--mono);direction:ltr;text-align:left;font-variant-numeric:tabular-nums}
+
+footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--edge);
+  padding-block:18px 36px;margin-top:40px}
+
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--edge);
+  border-top-color:var(--cyan);border-radius:50%;vertical-align:-2px;margin-inline-end:6px}
+@media (prefers-reduced-motion:no-preference){
+  .spin{animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+}
+@media (max-width:560px){
+  h1.neon{font-size:24px}
+  .fld{flex:1 1 100%}
+  nav a{padding:5px 10px;font-size:13px}
+}

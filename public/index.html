@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>میز پژوهش اورون</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="grid-bg" aria-hidden="true"></div>
+
+<header>
+  <div class="wrap hrow">
+    <a class="brand" href="#analyze">
+      <span class="orb" aria-hidden="true"></span>
+      <span><b>میز پژوهش</b><em>دستیار تحلیل مقاله</em></span>
+    </a>
+    <nav id="nav">
+      <a href="#analyze" data-v="analyze">تحلیل مقاله</a>
+      <a href="#library" data-v="library">کتابخانه</a>
+      <a href="#ask" data-v="ask">پرسش</a>
+      <a href="#templates" data-v="templates">قالب‌ها</a>
+      <a href="#chem" data-v="chem">ترکیبات</a>
+    </nav>
+    <div class="status" id="status" title="وضعیت سرور">…</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ═══ تحلیل ═══ -->
+<section id="v-analyze">
+  <h1 class="neon">تحلیل خودکار مقاله</h1>
+  <p class="lede">چکیده یا متن کامل مقاله را بچسبانید. Claude آن را می‌خواند، فیلدهای قالب انتخابی را استخراج می‌کند و شما می‌توانید نتیجه را در کتابخانه ذخیره کنید.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label class="fld">قالب استخراج
+        <select id="tplSel"></select>
+      </label>
+      <label class="fld">دسته (اختیاری)
+        <input id="tagIn" type="text" placeholder="آنتی‌اکسیدان، ضدسرطان، …">
+      </label>
+    </div>
+    <label class="fld" style="margin-top:14px">متن مقاله
+      <textarea id="txtIn" rows="9" placeholder="چکیده یا متن کامل مقاله را اینجا بچسبانید…"></textarea>
+    </label>
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="goAnalyze">تحلیل کن</button>
+      <button class="btn ghost" id="clearIn">پاک کردن</button>
+      <span class="hint" id="aState"></span>
+    </div>
+  </div>
+
+  <div id="result" hidden></div>
+</section>
+
+<!-- ═══ کتابخانه ═══ -->
+<section id="v-library" hidden>
+  <h1 class="neon">کتابخانه</h1>
+  <p class="lede">هر مقاله‌ای که تحلیل و ذخیره می‌کنید اینجا می‌ماند. دیتابیس روی Neon است، پس از هر دستگاهی در دسترس است.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label class="fld grow">جستجو
+        <input id="qLib" type="search" placeholder="در عنوان، DOI، ترکیب و خلاصه…">
+      </label>
+      <label class="fld">اثر آنتی‌اکسیدانی
+        <select id="aoSel">
+          <option value="">همه</option>
+          <option value="yes">دارد</option>
+          <option value="no">بررسی نشده</option>
+          <option value="unclear">نامشخص</option>
+        </select>
+      </label>
+      <div class="fld" style="justify-content:flex-end">
+        <button class="chip" id="nrfChip" aria-pressed="false">فقط Nrf2</button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px;gap:8px">
+      <span class="hint" id="libCount"></span>
+      <span class="spacer"></span>
+      <a class="btn ghost sm" href="/api/export.csv">خروجی CSV</a>
+      <a class="btn ghost sm" href="/api/export.md">خروجی Markdown</a>
+    </div>
+  </div>
+
+  <div id="libList" class="stack"></div>
+</section>
+
+<!-- ═══ پرسش ═══ -->
+<section id="v-ask" hidden>
+  <h1 class="neon">پرسش از کل کتابخانه</h1>
+  <p class="lede">سؤال بپرسید؛ جواب فقط از روی مقالات ذخیره‌شدهٔ خودتان ساخته می‌شود و هر ادعا به شمارهٔ مقاله ارجاع داده می‌شود.</p>
+
+  <div class="panel">
+    <label class="fld">سؤال
+      <textarea id="qAsk" rows="3" placeholder="مثلاً: کدام الگوی استخلاف بیشترین اثر آنتی‌اکسیدانی را داشت و کدام مقالات آن را تأیید می‌کنند؟"></textarea>
+    </label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="goAsk">بپرس</button>
+      <span class="hint" id="askState"></span>
+    </div>
+  </div>
+
+  <div id="askOut" class="answer" hidden></div>
+  <h2 class="sub" id="histTitle" hidden>پرسش‌های پیشین</h2>
+  <div id="askHist" class="stack"></div>
+</section>
+
+<!-- ═══ قالب‌ها ═══ -->
+<section id="v-templates" hidden>
+  <h1 class="neon">قالب‌های استخراج</h1>
+  <p class="lede">قالب تعیین می‌کند چه فیلدهایی از هر مقاله بیرون کشیده شود. سه قالب آماده هست و می‌توانید قالب دلخواه خودتان را بسازید.</p>
+  <div id="tplList" class="stack"></div>
+
+  <div class="panel" style="margin-top:20px">
+    <h2 class="sub" style="margin-top:0">ساخت قالب تازه</h2>
+    <div class="row">
+      <label class="fld">کلید (انگلیسی، بدون فاصله)<input id="ntKey" placeholder="pharmacology"></label>
+      <label class="fld grow">نام<input id="ntName" placeholder="فارماکولوژی"></label>
+    </div>
+    <label class="fld" style="margin-top:12px">توضیح<input id="ntDesc" placeholder="برای چه نوع مقاله‌ای"></label>
+    <label class="fld" style="margin-top:12px">فیلدها — هر خط یک فیلد، به شکل <code>کلید | برچسب فارسی | راهنما</code>
+      <textarea id="ntFields" rows="5" placeholder="target | هدف مولکولی | گیرنده یا آنزیم هدف
+dose | دوز | مقدار و مسیر تجویز"></textarea>
+    </label>
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="saveTpl">ذخیرهٔ قالب</button>
+      <span class="hint" id="tplState"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ترکیبات ═══ -->
+<section id="v-chem" hidden>
+  <h1 class="neon">ترکیبات و محاسبات</h1>
+  <p class="lede">کتابخانهٔ ۲۱۶ آنالوگ با دیسکریپتورهای محاسبه‌شده، و نتایج DFT روی سری اورون‌های طبیعی.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label class="fld">مرتب‌سازی
+        <select id="cSort">
+          <option value="score_direct">امتیاز رادیکال‌گیری</option>
+          <option value="score_nrf2">امتیاز Nrf2</option>
+          <option value="n_oh">تعداد هیدروکسیل</option>
+          <option value="logp">logP</option>
+          <option value="mw">جرم مولکولی</option>
+        </select>
+      </label>
+      <div class="fld" style="justify-content:flex-end;flex-direction:row;gap:8px;align-items:flex-end">
+        <button class="chip" id="cDrug" aria-pressed="false">دارومانند</button>
+        <button class="chip" id="cCat" aria-pressed="false">کاتکول‌دار</button>
+      </div>
+    </div>
+  </div>
+  <div class="tw"><table id="cTable">
+    <thead><tr><th>کد</th><th>حلقهٔ A</th><th>حلقهٔ B</th><th class="n">مستقیم</th><th class="n">Nrf2</th><th class="n">logP</th><th class="n">nOH</th></tr></thead>
+    <tbody></tbody></table></div>
+
+  <h2 class="sub">انرژی تفکیک پیوند O–H</h2>
+  <div class="tw"><table id="qTable">
+    <thead><tr><th>ترکیب</th><th>الگو</th><th class="n">کمترین BDE</th><th class="n">IP (eV)</th><th class="n">nOH</th></tr></thead>
+    <tbody></tbody></table></div>
+  <p class="hint" id="qLevel"></p>
+</section>
+
+</main>
+
+<footer class="wrap">
+  دیتابیس روی Neon · تحلیل با Claude · کتابخانهٔ پایه: ۵۹ مقالهٔ گردآوری‌شده
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
