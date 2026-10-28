@@ -33,9 +33,12 @@ function shape(w) {
 
 /** مقالاتی که به یک مقالهٔ معین استناد کرده‌اند. */
 export async function citedBy(doi, limit = 25) {
+  // فیلتر cites فقط شناسهٔ OpenAlex را می‌پذیرد، نه DOI — اول باید ترجمه شود
+  const w = await oaGet(`/works/doi:${encodeURIComponent(cleanDoi(doi))}?select=id`);
+  const id = String(w?.id || '').replace('https://openalex.org/', '');
+  if (!id) throw new Error('این مقاله در OpenAlex نیست');
   const j = await oaGet(
-    `/works?filter=cites:doi:${encodeURIComponent(cleanDoi(doi))}` +
-    `&per-page=${limit}&sort=cited_by_count:desc&select=${WORK_FIELDS}`);
+    `/works?filter=cites:${id}&per-page=${limit}&sort=cited_by_count:desc&select=${WORK_FIELDS}`);
   return { total: j.meta?.count || 0, results: (j.results || []).map(shape) };
 }
 
