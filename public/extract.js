@@ -29,16 +29,14 @@ const ASSAYS = [
 ];
 
 /* نام معیار و واحدهایی که معنا دارند */
-// \b لازم است وگرنه Ki داخل «skin» و «Kinetic» هم می‌افتد
-const METRIC = '\\b(IC\\s?50|IC₅₀|EC\\s?50|EC₅₀|SC\\s?50|SC₅₀|GI\\s?50|LD\\s?50|LC\\s?50|MIC|MBC|Ki|Kd|ED\\s?50)\\b';
-const ONE = '\\d{1,4}(?:[.,]\\d{1,3})?(?:\\s?±\\s?\\d{1,4}(?:[.,]\\d{1,3})?)?';
-// مقاله‌ها معمولاً چند عدد را پشت هم می‌آورند: «IC50 values of 6.3, 9.9 and 14.2 µM»
-const NUMS = `(${ONE}(?:\\s*(?:,|،|and|و|–|—|-|to|تا)\\s*${ONE})*)`;
-const UNIT = '(n[Mm]|µ[Mm]|μ[Mm]|uM|mM|m?g\\s?\\/\\s?m[Ll]|µg\\s?\\/\\s?m[Ll]|μg\\s?\\/\\s?m[Ll]|ppm|%)';
-
-const RX_METRIC = new RegExp(
-  `${METRIC}\\s*(?:value?s?\\s*)?(?:of|=|:|was|is|were|ranging\\s+from|~|≈|about|در حدود)?\\s*${NUMS}\\s*${UNIT}`,
-  'gi');
+// هیچ الگوی تودرتویی اینجا نیست: الگوهای تودرتو روی متن بلند، مرورگر را
+// با backtracking قفل می‌کنند. به جایش اول نام معیار را پیدا می‌کنیم و بعد
+// فقط در یک پنجرهٔ کوتاهِ بعد از آن دنبال عدد و واحد می‌گردیم.
+// \b لازم است وگرنه Ki داخل «skin» و «Kinetic» هم می‌افتد.
+const RX_METRIC = /\b(IC\s?50|IC₅₀|EC\s?50|EC₅₀|SC\s?50|SC₅₀|GI\s?50|LD\s?50|LC\s?50|MIC|MBC|Ki|Kd|ED\s?50)\b/gi;
+const RX_UNIT = /(n[Mm]|µ[Mm]|μ[Mm]|uM|mM|mg\s?\/\s?m[Ll]|g\s?\/\s?m[Ll]|µg\s?\/\s?m[Ll]|μg\s?\/\s?m[Ll]|ppm|%)/;
+const RX_PLAIN_NUM = /\d{1,4}(?:[.,]\d{1,3})?/g;
+const WINDOW = 150;   // عدد معمولاً بلافاصله بعد از نام معیار می‌آید
 
 /* برچسب ترکیب: «compound 7»، «7a»، «derivative 12» */
 const RX_LABEL = /\b(?:compound|cpd|derivative|analog(?:ue)?|ligand)\s*[-–]?\s*([0-9]{1,3}[a-z]{0,2})\b/gi;
@@ -86,15 +84,25 @@ export function extractMeasures(text, { limit = 60 } = {}) {
   RX_METRIC.lastIndex = 0;
   while ((m = RX_METRIC.exec(t)) && out.length < limit) {
     const metric = m[1].replace(/\s+/g, '').replace('₅₀', '50').toUpperCase();
-    const unit = unitOf(m[3]);
     const at = m.index;
+
+    // پنجرهٔ کوتاه بعد از نام معیار؛ انحراف معیار (± …) را کنار می‌گذاریم
+    const win = t.slice(m.index + m[0].length, m.index + m[0].length + WINDOW)
+      .replace(/±\s*\d{1,4}(?:[.,]\d{1,3})?/g, ' ')
+      // «compound 12» شمارهٔ ترکیب است نه مقدارِ اندازه‌گیری
+      .replace(/\b(?:compound|cpd|derivative|analog(?:ue)?|ligand|entry|No\.?)\s*[-–]?\s*\d{1,3}[a-z]{0,2}\b/gi, ' ');
+    const u = RX_UNIT.exec(win);
+    if (!u || u.index > 110) continue;
+    const unit = unitOf(u[1]);
+    // همهٔ عددهایی که پیش از واحد آمده‌اند: «values of 6.3, 9.9 and 14.2 µM»
+    const nums = (win.slice(0, u.index).match(RX_PLAIN_NUM) || []).slice(0, 8);
+    if (!nums.length) continue;
     const assays = assayNear(t, at);
     const compound = labelNear(t, at);
     const context = tidy(t.slice(Math.max(0, at - 130), at + 170));
     // یک عبارت ممکن است چند عدد داشته باشد؛ هر کدام یک اندازه‌گیری است
-    for (const piece of m[2].split(/\s*(?:,|،|and|و|–|—|-|to|تا)\s*/)) {
-      const value = piece.trim().replace(',', '.');
-      if (!/^\d/.test(value)) continue;
+    for (const piece of nums) {
+      const value = piece.replace(',', '.');
       const key = metric + value + unit;
       if (seen.has(key)) continue;
       seen.add(key);
